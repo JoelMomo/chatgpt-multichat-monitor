@@ -3,6 +3,7 @@ const DEFAULTS = {
   monitorShowIdle: false,
   monitorCompact: false,
   monitorAnimations: true,
+  monitorDoneVisibilityMs: 180000,
   monitorSoundsEnabled: true,
   monitorSoundDone: "pop",
   monitorSoundRetry: "potion",
@@ -15,12 +16,20 @@ const enabled = document.getElementById("enabled");
 const showIdle = document.getElementById("showIdle");
 const compact = document.getElementById("compact");
 const animations = document.getElementById("animations");
+const doneVisibility = document.getElementById("doneVisibility");
+
+const resetPosition = document.getElementById("resetPosition");
 const restoreHidden = document.getElementById("restoreHidden");
+const restoreHiddenData = document.getElementById("restoreHiddenData");
+const clearAliases = document.getElementById("clearAliases");
+const clearPins = document.getElementById("clearPins");
 const clearHistory = document.getElementById("clearHistory");
 const historyRoot = document.getElementById("history");
+const historySummary = document.getElementById("historySummary");
 
 const soundsEnabled = document.getElementById("soundsEnabled");
 const soundSettings = document.getElementById("soundSettings");
+const soundSummary = document.getElementById("soundSummary");
 const soundDone = document.getElementById("soundDone");
 const soundRetry = document.getElementById("soundRetry");
 const soundAttention = document.getElementById("soundAttention");
@@ -55,8 +64,11 @@ function stateLabel(state) {
 }
 
 function renderHistory(items) {
+  const values = Array.isArray(items) ? items.slice(0, 12) : [];
+  historySummary.textContent = String(values.length);
   historyRoot.replaceChildren();
-  if (!Array.isArray(items) || items.length === 0) {
+
+  if (values.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty";
     empty.textContent = "No recent activity";
@@ -64,20 +76,25 @@ function renderHistory(items) {
     return;
   }
 
-  for (const item of items.slice(0, 12)) {
+  for (const item of values) {
     const event = document.createElement("div");
     event.className = "event";
+
     const top = document.createElement("div");
     top.className = "event-top";
+
     const state = document.createElement("span");
     state.className = "event-state";
     state.textContent = stateLabel(item.state);
+
     const title = document.createElement("span");
     title.className = "event-title";
     title.textContent = item.title || "ChatGPT";
+
     const time = document.createElement("span");
     time.className = "event-time";
     time.textContent = relativeTime(item.ts) + " ago";
+
     top.append(state, title, time);
     event.appendChild(top);
     historyRoot.appendChild(event);
@@ -94,12 +111,15 @@ async function loadHistory() {
 }
 
 function refreshSoundUi() {
-  soundSettings.classList.toggle("muted", !soundsEnabled.checked);
+  const active = soundsEnabled.checked;
+  soundSettings.classList.toggle("muted", !active);
+  soundSummary.textContent = active ? "On" : "Off";
 }
 
 async function testSound(select) {
   const sound = select?.value || "off";
   if (sound === "off") return;
+
   await chrome.runtime.sendMessage({
     type: "monitor-test-sound",
     sound,
@@ -107,18 +127,46 @@ async function testSound(select) {
   }).catch(() => {});
 }
 
+function showButtonResult(button, text, fallback) {
+  button.textContent = text;
+  setTimeout(() => {
+    button.textContent = fallback;
+  }, 1000);
+}
+
+async function clearPreferenceField(field, button, doneText, fallback) {
+  const response = await chrome.runtime.sendMessage({
+    type: "monitor-clear-chat-pref-field",
+    field
+  }).catch(() => null);
+
+  showButtonResult(button, response?.ok ? doneText : "Failed", fallback);
+}
+
+async function restoreHiddenChats(button) {
+  const response = await chrome.runtime.sendMessage({
+    type: "monitor-unhide-all"
+  }).catch(() => null);
+
+  showButtonResult(button, response?.ok ? "Restored" : "Failed", button === restoreHidden ? "Restore hidden" : "Restore hidden chats");
+}
+
 async function load() {
   const settings = await chrome.storage.local.get(DEFAULTS);
+
   enabled.checked = settings.monitorEnabled !== false;
   showIdle.checked = settings.monitorShowIdle === true;
   compact.checked = settings.monitorCompact === true;
   animations.checked = settings.monitorAnimations !== false;
+  doneVisibility.value = String(settings.monitorDoneVisibilityMs ?? DEFAULTS.monitorDoneVisibilityMs);
+
   soundsEnabled.checked = settings.monitorSoundsEnabled !== false;
   soundDone.value = settings.monitorSoundDone || DEFAULTS.monitorSoundDone;
   soundRetry.value = settings.monitorSoundRetry || DEFAULTS.monitorSoundRetry;
   soundAttention.value = settings.monitorSoundAttention || DEFAULTS.monitorSoundAttention;
   soundError.value = settings.monitorSoundError || DEFAULTS.monitorSoundError;
   soundVolume.value = settings.monitorSoundVolume ?? DEFAULTS.monitorSoundVolume;
+
   refreshSoundUi();
   await loadHistory();
 }
@@ -137,6 +185,28 @@ compact.addEventListener("change", () => {
 
 animations.addEventListener("change", () => {
   chrome.storage.local.set({ monitorAnimations: animations.checked });
+});
+
+doneVisibility.addEventListener("change", () => {
+  chrome.storage.local.set({
+    monitorDoneVisibilityMs: Number(doneVisibility.value)
+  });
+});
+
+resetPosition.addEventListener("click", async () => {
+  await chrome.storage.local.set({ monitorPosition: null });
+  showButtonResult(resetPosition, "Reset", "Reset position");
+});
+
+restoreHidden.addEventListener("click", () => restoreHiddenChats(restoreHidden));
+restoreHiddenData.addEventListener("click", () => restoreHiddenChats(restoreHiddenData));
+
+clearAliases.addEventListener("click", () => {
+  clearPreferenceField("alias", clearAliases, "Cleared", "Clear aliases");
+});
+
+clearPins.addEventListener("click", () => {
+  clearPreferenceField("pinned", clearPins, "Cleared", "Clear pins");
 });
 
 soundsEnabled.addEventListener("change", () => {
@@ -161,15 +231,10 @@ for (const button of soundTests) {
   });
 }
 
-restoreHidden.addEventListener("click", async () => {
-  await chrome.runtime.sendMessage({ type: "monitor-unhide-all" }).catch(() => {});
-  restoreHidden.textContent = "Restored";
-  setTimeout(() => { restoreHidden.textContent = "Restore hidden"; }, 1000);
-});
-
 clearHistory.addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ type: "monitor-clear-history" }).catch(() => {});
   renderHistory([]);
+  showButtonResult(clearHistory, "Cleared", "Clear history");
 });
 
 load();

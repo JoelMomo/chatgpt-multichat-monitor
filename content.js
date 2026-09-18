@@ -4,6 +4,7 @@
 
   const FINISH_CONFIRM_MS = 1400;
   const RECENT_TTL_MS = 180000;
+  const DEFAULT_DONE_VISIBILITY_MS = 180000;
   const ATTENTION_TTL_MS = 30 * 60 * 1000;
   const ERROR_TTL_MS = 10 * 60 * 1000;
   const FALLBACK_SCAN_MS = 5000;
@@ -17,6 +18,7 @@
     monitorCollapsed: false,
     monitorCompact: false,
     monitorAnimations: true,
+    monitorDoneVisibilityMs: DEFAULT_DONE_VISIBILITY_MS,
     monitorPosition: null
   };
 
@@ -169,11 +171,40 @@
     resetTimer = null;
   }
 
+  function doneVisibilityMs() {
+    const value = Number(settings.monitorDoneVisibilityMs);
+    return [30000, 60000, 180000, 300000].includes(value)
+      ? value
+      : DEFAULT_DONE_VISIBILITY_MS;
+  }
+
   function resetDelayFor(state) {
     if (state === "retry" || state === "attention") return ATTENTION_TTL_MS;
     if (state === "error") return ERROR_TTL_MS;
-    if (state === "finished" || state === "interrupted") return RECENT_TTL_MS;
+    if (state === "finished") return doneVisibilityMs();
+    if (state === "interrupted") return RECENT_TTL_MS;
     return 0;
+  }
+
+  function scheduleResetForCurrentState() {
+    clearResetTimer();
+    const state = localState.state;
+    const delay = resetDelayFor(state);
+    if (delay <= 0) return;
+
+    const elapsed = localState.finishedAt
+      ? Math.max(0, Date.now() - localState.finishedAt)
+      : 0;
+    const remaining = Math.max(0, delay - elapsed);
+
+    if (remaining === 0) {
+      setState("idle");
+      return;
+    }
+
+    resetTimer = setTimeout(() => {
+      if (localState.state === state) setState("idle");
+    }, remaining);
   }
 
   function statePayload() {
@@ -218,14 +249,7 @@
       localState.finishedAt = null;
     }
 
-    clearResetTimer();
-    const delay = resetDelayFor(state);
-    if (delay > 0) {
-      resetTimer = setTimeout(() => {
-        if (localState.state === state) setState("idle");
-      }, delay);
-    }
-
+    scheduleResetForCurrentState();
     sendCurrentState();
   }
 
@@ -321,18 +345,21 @@
     return hours + "h " + (minutes % 60) + "m";
   }
 
+  function stateName(state) {
+    return ({
+      working: "Working",
+      retry: "Retry needed",
+      attention: "Needs attention",
+      error: "Error",
+      finished: "Done",
+      interrupted: "Stopped",
+      idle: "Idle"
+    })[state] || "Unknown";
+  }
+
   function statusText(chat, now) {
     if (chat.state === "working") {
       return "Working " + formatElapsed(now - (chat.startedAt || chat.updatedAt || now));
-    }
-    if (chat.state === "retry") {
-      return "Retry needed";
-    }
-    if (chat.state === "attention") {
-      return "Needs attention";
-    }
-    if (chat.state === "error") {
-      return "Error";
     }
     if (chat.state === "finished") {
       return "Done " + formatElapsed(now - (chat.finishedAt || chat.updatedAt || now)) + " ago";
@@ -340,14 +367,17 @@
     if (chat.state === "interrupted") {
       return "Stopped " + formatElapsed(now - (chat.finishedAt || chat.updatedAt || now)) + " ago";
     }
-    return "Idle";
+    return stateName(chat.state);
   }
 
   function isRecent(chat, now) {
     if (chat.hidden) return false;
     if (chat.pinned) return true;
     if (chat.state === "working" || chat.state === "retry" || chat.state === "attention" || chat.state === "error") return true;
-    if (chat.state === "finished" || chat.state === "interrupted") {
+    if (chat.state === "finished") {
+      return now - (chat.finishedAt || chat.updatedAt || 0) < doneVisibilityMs();
+    }
+    if (chat.state === "interrupted") {
       return now - (chat.finishedAt || chat.updatedAt || 0) < RECENT_TTL_MS;
     }
     return settings.monitorShowIdle === true;
@@ -571,6 +601,8 @@
 
       node.title.textContent = (chat.pinned ? "📌 " : "") + (chat.displayTitle || chat.title || "ChatGPT");
       node.meta.textContent = statusText(chat, now);
+      node.dot.title = stateName(chat.state);
+      node.dot.setAttribute("aria-label", stateName(chat.state));
       node.main.setAttribute(
         "aria-label",
         (chat.displayTitle || chat.title || "ChatGPT") + ", " + node.meta.textContent
@@ -690,7 +722,9 @@
       ".dot{width:9px;height:9px;border-radius:50%;background:#687386;flex:0 0 auto}" +
       ".state-working .dot{background:#63e6d7;box-shadow:0 0 0 3px rgba(99,230,215,.09);animation:workingpulse 1.35s ease-in-out infinite}" +
       ".state-finished .dot{background:#72d99b}.state-interrupted .dot{background:#f2bd68}" +
-      ".state-retry .dot{background:#f2c86d}.state-attention .dot{background:#f7a85b}.state-error .dot{background:#ee7070}" +
+      ".state-retry .dot{background:#ffd65a;box-shadow:0 0 0 3px rgba(255,214,90,.08)}" +
+      ".state-attention .dot{background:#ff914d;box-shadow:0 0 0 3px rgba(255,145,77,.08)}" +
+      ".state-error .dot{background:#ee7070}" +
       ".copy{min-width:0;display:flex;flex-direction:column;gap:1px;flex:1}" +
       ".chat-title{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}" +
       ".meta{color:#8e9bad;font-size:11px}.pinned .chat-title{color:#fff}" +
@@ -702,11 +736,12 @@
       ".empty{padding:18px 14px 20px;color:#8e9bad;text-align:center;font-size:12px}" +
       ".foot{padding:8px 12px 10px;color:#6f7c8e;text-align:center;font-size:10px;border-top:1px solid #29313d}" +
       "#panel.collapsed{width:215px}.collapsed .list,.collapsed .empty,.collapsed .foot,.collapsed .summary{display:none}" +
-      ".collapsed .head{border-bottom:0}#panel.compact{width:230px}#panel.compact.collapsed{width:190px}" +
-      ".compact .head{height:38px;padding:0 7px 0 10px}.compact .brand{font-size:12px}" +
+      ".collapsed .head{border-bottom:0}#panel.compact{width:214px}#panel.compact.collapsed{width:174px}" +
+      ".compact .head{height:36px;padding:0 6px 0 9px}.compact .brand{font-size:0}.compact .brand::after{content:'Monitor';font-size:11px}" +
       ".compact .summary,.compact .meta,.compact .foot{display:none}" +
-      ".compact .list{padding:4px}.compact .chat-main{padding:6px 5px 6px 8px;gap:8px}" +
-      ".compact .more{width:24px;height:24px;margin-right:3px}.compact .dot{width:8px;height:8px}" +
+      ".compact .list{padding:3px}.compact .chat-main{padding:5px 4px 5px 7px;gap:7px}" +
+      ".compact .more{width:22px;height:22px;margin-right:2px;opacity:.18;transition:opacity .12s}.compact .chat-row:hover .more,.compact .more:focus-visible{opacity:1}" +
+      ".compact .dot{width:8px;height:8px}" +
       ".flash{animation:stateflash 1.2s ease-out 1}.no-animations .state-working .dot,.no-animations .flash{animation:none}" +
       "@keyframes workingpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.52;transform:scale(.82)}}" +
       "@keyframes stateflash{0%{background:#2b3440}100%{background:transparent}}";
@@ -842,6 +877,10 @@
 
     if (changes.monitorPosition) {
       applyPosition(settings.monitorPosition);
+    }
+
+    if (changes.monitorDoneVisibilityMs && localState.state === "finished") {
+      scheduleResetForCurrentState();
     }
 
     render();

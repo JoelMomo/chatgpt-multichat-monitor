@@ -406,6 +406,22 @@ async function setChatPreference(chatKey, patch) {
   return true;
 }
 
+async function clearChatPreferenceField(field) {
+  await ensureInitialized();
+  if (!["alias", "pinned", "hidden"].includes(field)) return false;
+
+  for (const key of Object.keys(chatPrefs)) {
+    const next = { ...chatPrefs[key] };
+    delete next[field];
+
+    if (!next.alias && !next.pinned && !next.hidden) delete chatPrefs[key];
+    else chatPrefs[key] = next;
+  }
+
+  await chrome.storage.local.set({ [PREFS_KEY]: chatPrefs });
+  return true;
+}
+
 async function cycleChat(states) {
   await rebuildRegistry();
   const data = snapshot().filter((chat) =>
@@ -500,18 +516,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "monitor-unhide-all") {
-    ensureInitialized()
-      .then(async () => {
-        for (const key of Object.keys(chatPrefs)) {
-          if (chatPrefs[key]?.hidden) {
-            chatPrefs[key] = { ...chatPrefs[key], hidden: false };
-            if (!chatPrefs[key].alias && !chatPrefs[key].pinned) delete chatPrefs[key];
-          }
-        }
-        await chrome.storage.local.set({ [PREFS_KEY]: chatPrefs });
-        await broadcast();
-        sendResponse({ ok: true });
-      })
+    clearChatPreferenceField("hidden")
+      .then((ok) => broadcast().then(() => sendResponse({ ok })))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-clear-chat-pref-field") {
+    clearChatPreferenceField(String(message.field || ""))
+      .then((ok) => broadcast().then(() => sendResponse({ ok })))
       .catch(() => sendResponse({ ok: false }));
     return true;
   }

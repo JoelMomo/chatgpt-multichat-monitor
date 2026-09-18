@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.6
+
+- Reorganized the popup into compact collapsible sections for Sound alerts, Chat data, Recent activity and Shortcuts.
+- Added **Reset position** for the floating monitor.
+- Added controls to clear all local aliases or pins independently and restore hidden chats.
+- Added configurable Done visibility: 30 seconds, 1 minute, 3 minutes or 5 minutes.
+- Done visibility changes apply immediately to an already-finished chat.
+- Added state-name hover tooltips to monitor LEDs.
+- Increased visual separation between yellow **Retry needed** and orange **Needs attention** indicators.
+- Tightened Compact mode further to 214 px, shortens the header label to Monitor and keeps chat-option buttons low-profile until hover/focus.
+
 ## 0.2.5
 
 - Changed the default **Done** sound from Off to **Pop**.
