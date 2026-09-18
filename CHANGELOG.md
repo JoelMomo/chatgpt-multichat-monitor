@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added a lightweight update checker for manual GitHub installs. It checks stable releases at most once every 24 hours and stores only version/timestamp metadata.
+- Added an **Update available** popup card with **View release** and per-version **Dismiss** actions.
+- Added a low-priority **↑** extension badge for available updates; chat attention and Working badges still take priority.
+- Added a one-time **What's new** popup card after the extension version changes.
+- Added a **Draft** state for chats with unsent prompt text. Draft stays visible even when Idle chats are hidden, does not enter recent history, and never overrides Working/Retry/Attention/Error/Done.
 - Added the final MultiChat Monitor icon set and wired it into the extension manifest/action.
 - Added presentation assets: normal monitor, compact monitor, drag-order and popup screenshots.
 - Re-captured the monitor screenshots with transparent surroundings so no ChatGPT page elements leak into the image and the panel's rounded corners remain visible.

@@ -40,12 +40,36 @@ button{border:1px solid #354052;background:#18202b;color:var(--text);padding:8px
 .history-actions{display:flex;justify-content:flex-end;margin-top:7px}.history-actions button{min-height:30px}
 .keys{color:var(--muted);font-size:10px;display:grid;gap:5px}
 kbd{padding:1px 4px;border:1px solid #3c4758;border-bottom-width:2px;border-radius:4px;color:#dbe3ec;background:#111821}
+.notice{border:1px solid #354052;border-radius:12px;background:#121a24;padding:11px 12px;margin-bottom:9px}
+.notice.update{border-color:#3c638f;background:#111d2b}.notice.whats-new{border-color:#2d615c;background:#10201f}
+.notice-title{font-weight:800;font-size:12px}.notice-copy{margin-top:3px;color:var(--muted);font-size:10px}
+.notice-actions{display:flex;gap:7px;margin-top:9px}.notice-actions button,.notice-link{min-height:30px;padding:6px 9px;font-size:10px}
+.notice-link{display:flex;align-items:center;justify-content:center;border:1px solid #3c638f;border-radius:8px;background:#172638;color:#dcecff;text-decoration:none;font-weight:750}
+.notice-link:hover{background:#1d3148}.notice.whats-new .notice-link{border-color:#2d615c;background:#15302d;color:#d9fff9}.notice.whats-new .notice-link:hover{background:#1a3b37}
 .footer{text-align:center;color:#687587;font-size:9px;margin-top:9px}
 </style>
 </head>
 <body>
 <h1>MultiChat Monitor</h1>
 <div class="sub">Lightweight monitoring for your open ChatGPT tabs.</div>
+
+<div class="notice update" id="updateNotice" hidden>
+  <div class="notice-title">Update available <span id="updateVersion"></span></div>
+  <div class="notice-copy">A newer stable version is available on GitHub.</div>
+  <div class="notice-actions">
+    <a class="notice-link" id="updateLink" href="#" target="_blank" rel="noreferrer">View release</a>
+    <button id="dismissUpdate" type="button">Dismiss</button>
+  </div>
+</div>
+
+<div class="notice whats-new" id="whatsNewNotice" hidden>
+  <div class="notice-title">Updated to <span id="whatsNewVersion"></span></div>
+  <div class="notice-copy">See what changed in this version.</div>
+  <div class="notice-actions">
+    <a class="notice-link" id="whatsNewLink" href="#" target="_blank" rel="noreferrer">What's new</a>
+    <button id="dismissWhatsNew" type="button">Got it</button>
+  </div>
+</div>
 
 <div class="card">
   <div class="row"><div><div class="label">Floating monitor</div><div class="hint">Show the overlay on ChatGPT pages.</div></div><label class="switch"><input id="enabled" type="checkbox"><span class="slider"></span></label></div>

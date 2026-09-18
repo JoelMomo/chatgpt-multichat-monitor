@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>Chrome / Edge · Manifest V3 · Local-first · No external service</strong>
+  <strong>Chrome / Edge · Manifest V3 · Local-first · No telemetry</strong>
 </p>
 
 <p align="center">
@@ -95,6 +95,7 @@ ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shar
 
 - Live **Working** state with elapsed time.
 - **Done** stays green until you actually visit that chat.
+- A non-empty prompt composer is shown as **Draft** instead of Idle; active generation still remains **Working** while you prepare the next prompt.
 - Detects recoverable **Retry needed** states, likely **Needs attention** responses and visible **Errors**.
 - Click any row to focus the correct tab and browser window.
 - Pin, hide or locally rename chats.
@@ -103,6 +104,7 @@ ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shar
 - Per-state local sound alerts with volume and test controls.
 - Small local recent-activity history.
 - Browser badge and keyboard shortcuts for fast navigation.
+- Lightweight GitHub release checks can notify manual-install users when a newer stable version is available.
 
 ## State legend
 
@@ -114,6 +116,7 @@ ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shar
 | **Needs attention** | Orange | The response likely ended with a question or request for user input. |
 | **Error** | Red | A visible non-recoverable ChatGPT error was detected. |
 | **Stopped** | Amber | Generation was manually stopped. |
+| **Draft** | Violet | The prompt box contains unsent text and no higher-priority state is active. |
 | **Idle** | Gray | No current or unread activity. Hidden by default unless requested or pinned. |
 
 A normal **Done** keeps only a short late-error grace window for detection; after that it remains green without continuing error scans until you visit it.
@@ -160,6 +163,20 @@ The extension icon stays quiet when nothing needs attention.
 
 - A number shows how many chats are currently working.
 - **!** means at least one chat needs attention, retry or error handling.
+- **↑** means a newer stable GitHub release is available. Chat activity always takes priority over the update badge.
+
+## Update notifications
+
+For manual installations, the background service worker checks GitHub's public releases API at most once every 24 hours.
+
+- Only stable, non-draft releases are considered.
+- A newer version shows an **Update available** card in the popup.
+- **View release** opens the corresponding GitHub release.
+- **Dismiss** hides that specific version; a later version can notify again.
+- After the extension itself is updated, a one-time **What's new** card links to that version's release notes.
+- No conversation text, chat titles or activity history is included in the GitHub request.
+
+Store-installed extensions can still use the browser's own automatic update mechanism; the built-in notice is primarily useful for manual GitHub installs.
 
 ## Keyboard shortcuts
 
@@ -177,6 +194,7 @@ The monitor is designed to stay open all day without continuously scanning conve
 
 - `MutationObserver` reacts to relevant DOM changes.
 - Observer-triggered checks are throttled.
+- Prompt-box input events update **Draft** immediately without scanning conversation content.
 - The fast path checks ChatGPT's direct Stop signal.
 - The broad button fallback runs only every 5 seconds.
 - Retry/error detection checks capped sets of relevant visible elements only while useful.
@@ -184,7 +202,8 @@ The monitor is designed to stay open all day without continuously scanning conve
 - Live timer text updates only in visible browser tabs.
 - Working animation uses a small opacity/transform pulse and can be disabled.
 - Rows are updated in place instead of rebuilding the full overlay.
-- No external polling service and no telemetry.
+- No continuous external polling and no telemetry.
+- Update checks are opportunistic and throttled to at most one public GitHub releases request every 24 hours.
 
 ## Recent activity
 
@@ -224,9 +243,11 @@ The popup lets you:
 
 ## Privacy
 
-The extension runs only on `https://chatgpt.com/*`.
+The content script runs only on `https://chatgpt.com/*`.
 
 It does not send conversation data to an external server. To detect activity it observes ChatGPT interface state. For the optional **Needs attention** classification, it reads only the end of the latest assistant response at the moment generation finishes. That text is not saved or transmitted.
+
+The background service worker can make one public request to GitHub's releases API at most every 24 hours to discover the latest stable version. That request contains no conversation data or telemetry.
 
 Stored data is limited to:
 
@@ -234,6 +255,8 @@ Stored data is limited to:
 - Local aliases / pin / hidden preferences
 - Manual chat order
 - Recent activity metadata
+- Update-check timestamps, latest known release version and dismissed-version state
+- One-time What's new acknowledgement state
 
 ## Limitations
 

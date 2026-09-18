@@ -26,6 +26,15 @@ const clearHistory = document.getElementById("clearHistory");
 const historyRoot = document.getElementById("history");
 const historySummary = document.getElementById("historySummary");
 
+const updateNotice = document.getElementById("updateNotice");
+const updateVersion = document.getElementById("updateVersion");
+const updateLink = document.getElementById("updateLink");
+const dismissUpdate = document.getElementById("dismissUpdate");
+const whatsNewNotice = document.getElementById("whatsNewNotice");
+const whatsNewVersion = document.getElementById("whatsNewVersion");
+const whatsNewLink = document.getElementById("whatsNewLink");
+const dismissWhatsNew = document.getElementById("dismissWhatsNew");
+
 const soundsEnabled = document.getElementById("soundsEnabled");
 const soundSettings = document.getElementById("soundSettings");
 const soundSummary = document.getElementById("soundSummary");
@@ -109,6 +118,38 @@ async function loadHistory() {
   }
 }
 
+function renderUpdateInfo(info) {
+  const latest = String(info?.latestVersion || "");
+  const hasUpdate = info?.updateAvailable === true && latest;
+
+  updateNotice.hidden = !hasUpdate;
+  if (hasUpdate) {
+    updateVersion.textContent = "v" + latest;
+    updateLink.href = info.latestUrl || "https://github.com/JoelMomo/chatgpt-multichat-monitor/releases";
+  }
+
+  const whatsNew = info?.whatsNew;
+  const hasWhatsNew = Boolean(whatsNew?.version);
+  whatsNewNotice.hidden = !hasWhatsNew;
+
+  if (hasWhatsNew) {
+    whatsNewVersion.textContent = "v" + whatsNew.version;
+    whatsNewLink.href = whatsNew.url ||
+      "https://github.com/JoelMomo/chatgpt-multichat-monitor/releases";
+  }
+}
+
+async function loadUpdateInfo() {
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "monitor-get-update-info"
+    });
+    renderUpdateInfo(response || {});
+  } catch {
+    renderUpdateInfo({});
+  }
+}
+
 function refreshSoundUi() {
   const active = soundsEnabled.checked;
   soundSettings.classList.toggle("muted", !active);
@@ -166,7 +207,10 @@ async function load() {
   soundVolume.value = settings.monitorSoundVolume ?? DEFAULTS.monitorSoundVolume;
 
   refreshSoundUi();
-  await loadHistory();
+  await Promise.all([
+    loadHistory(),
+    loadUpdateInfo()
+  ]);
 }
 
 enabled.addEventListener("change", () => {
@@ -234,6 +278,26 @@ clearHistory.addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ type: "monitor-clear-history" }).catch(() => {});
   renderHistory([]);
   showButtonResult(clearHistory, "Cleared", "Clear history");
+});
+
+dismissUpdate.addEventListener("click", async () => {
+  const version = updateVersion.textContent.replace(/^v/i, "");
+  const response = await chrome.runtime.sendMessage({
+    type: "monitor-dismiss-update",
+    version
+  }).catch(() => null);
+
+  if (response?.ok) renderUpdateInfo(response);
+});
+
+dismissWhatsNew.addEventListener("click", async () => {
+  const version = whatsNewVersion.textContent.replace(/^v/i, "");
+  const response = await chrome.runtime.sendMessage({
+    type: "monitor-dismiss-whats-new",
+    version
+  }).catch(() => null);
+
+  if (response?.ok) renderUpdateInfo(response);
 });
 
 load();

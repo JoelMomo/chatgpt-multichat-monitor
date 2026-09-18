@@ -94,6 +94,42 @@
     return allowFallback ? fallbackWorkingSignal() : false;
   }
 
+  function promptHasDraft() {
+    const selectors = [
+      "#prompt-textarea",
+      '[data-testid="composer-text-input"]',
+      'textarea[data-testid="prompt-textarea"]',
+      "form textarea",
+      'form [contenteditable="true"]'
+    ];
+
+    const seen = new Set();
+    for (const selector of selectors) {
+      for (const element of document.querySelectorAll(selector)) {
+        if (seen.has(element) || !isVisible(element)) continue;
+        seen.add(element);
+
+        const raw = "value" in element
+          ? element.value
+          : (element.innerText || element.textContent || "");
+        const text = String(raw || "")
+          .replace(/[\u200B-\u200D\uFEFF]/g, "")
+          .trim();
+
+        if (text) return true;
+      }
+    }
+
+    return false;
+  }
+
+  function setRestingState() {
+    setState(promptHasDraft() ? "draft" : "idle", {
+      startedAt: null,
+      finishedAt: null
+    });
+  }
+
   function classifyIssueText(text) {
     const value = String(text || "").trim().slice(0, 700);
     if (!value) return null;
@@ -192,12 +228,12 @@
     const remaining = Math.max(0, delay - elapsed);
 
     if (remaining === 0) {
-      setState("idle");
+      setRestingState();
       return;
     }
 
     resetTimer = setTimeout(() => {
-      if (localState.state === state) setState("idle");
+      if (localState.state === state) setRestingState();
     }, remaining);
   }
 
@@ -238,7 +274,7 @@
       updatedAt: Date.now()
     };
 
-    if (state === "idle") {
+    if (state === "idle" || state === "draft") {
       localState.startedAt = null;
       localState.finishedAt = null;
     }
@@ -285,6 +321,7 @@
 
     const canHaveLateIssue =
       localState.state !== "idle" &&
+      localState.state !== "draft" &&
       (localState.state !== "finished" ||
         Date.now() - (localState.finishedAt || localState.updatedAt || 0) <= LATE_ISSUE_GRACE_MS);
 
@@ -297,6 +334,17 @@
       if (localState.state !== issue) {
         setState(issue, {
           finishedAt: localState.finishedAt || Date.now()
+        });
+      }
+      return;
+    }
+
+    if (localState.state === "idle" || localState.state === "draft") {
+      const nextRestingState = promptHasDraft() ? "draft" : "idle";
+      if (localState.state !== nextRestingState) {
+        setState(nextRestingState, {
+          startedAt: null,
+          finishedAt: null
         });
       }
       return;
@@ -352,6 +400,7 @@
       error: "Error",
       finished: "Done",
       interrupted: "Stopped",
+      draft: "Draft",
       idle: "Idle"
     })[state] || "Unknown";
   }
@@ -372,7 +421,7 @@
   function isRecent(chat, now) {
     if (chat.hidden) return false;
     if (chat.pinned) return true;
-    if (chat.state === "working" || chat.state === "retry" || chat.state === "attention" || chat.state === "error") return true;
+    if (chat.state === "working" || chat.state === "retry" || chat.state === "attention" || chat.state === "error" || chat.state === "draft") return true;
     if (chat.state === "finished") return true;
     if (chat.state === "interrupted") {
       return now - (chat.finishedAt || chat.updatedAt || 0) < RECENT_TTL_MS;
@@ -816,7 +865,7 @@
       ".state-finished .dot{background:#72d99b}.state-interrupted .dot{background:#f2bd68}" +
       ".state-retry .dot{background:#ffd65a;box-shadow:0 0 0 3px rgba(255,214,90,.08)}" +
       ".state-attention .dot{background:#ff914d;box-shadow:0 0 0 3px rgba(255,145,77,.08)}" +
-      ".state-error .dot{background:#ee7070}" +
+      ".state-error .dot{background:#ee7070}.state-draft .dot{background:#a78bfa;box-shadow:0 0 0 3px rgba(167,139,250,.07)}" +
       ".copy{min-width:0;display:flex;flex-direction:column;gap:1px;flex:1}" +
       ".chat-title{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}" +
       ".meta{color:#8e9bad;font-size:11px}.pinned .chat-title{color:#fff}" +
@@ -1003,7 +1052,7 @@
 
     if (message?.type === "monitor-acknowledge-done") {
       if (localState.state === "finished") {
-        setState("idle");
+        setRestingState();
       }
       sendResponse({ ok: true });
       return true;
@@ -1035,6 +1084,23 @@
   const observer = new MutationObserver(() => {
     scheduleEvaluate();
   });
+
+  document.addEventListener("input", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const editorSelector = [
+      "#prompt-textarea",
+      '[data-testid="composer-text-input"]',
+      'textarea[data-testid="prompt-textarea"]',
+      "form textarea",
+      'form [contenteditable="true"]'
+    ].join(",");
+
+    if (target.matches(editorSelector) || target.closest(editorSelector)) {
+      scheduleEvaluate();
+    }
+  }, true);
 
   observer.observe(document.documentElement, {
     childList: true,

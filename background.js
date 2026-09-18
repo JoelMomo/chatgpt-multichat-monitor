@@ -5,6 +5,13 @@ const ORDER_KEY = "monitorChatOrder";
 const HISTORY_KEY = "monitorHistory";
 const HISTORY_LIMIT = 100;
 const HISTORY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const UPDATE_STATE_KEY = "monitorUpdateState";
+const WHATS_NEW_KEY = "monitorWhatsNewState";
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const RELEASES_API_URL =
+  "https://api.github.com/repos/JoelMomo/chatgpt-multichat-monitor/releases/latest";
+const RELEASES_PAGE_URL =
+  "https://github.com/JoelMomo/chatgpt-multichat-monitor/releases";
 
 const SOUND_DEFAULTS = {
   monitorSoundsEnabled: true,
@@ -35,7 +42,16 @@ const SOUND_KEY_BY_STATE = {
 let chatPrefs = {};
 let chatOrder = [];
 let history = [];
+let updateState = {
+  lastAttemptAt: 0,
+  checkedAt: 0,
+  latestVersion: "",
+  latestUrl: RELEASES_PAGE_URL,
+  dismissedVersion: ""
+};
+let whatsNewState = null;
 let initPromise = null;
+let updateCheckPromise = null;
 let lastAudioRequestAt = 0;
 const pendingDoneSoundTimers = new Map();
 
@@ -61,7 +77,9 @@ async function ensureInitialized() {
     const stored = await chrome.storage.local.get({
       [PREFS_KEY]: {},
       [ORDER_KEY]: [],
-      [HISTORY_KEY]: []
+      [HISTORY_KEY]: [],
+      [UPDATE_STATE_KEY]: null,
+      [WHATS_NEW_KEY]: null
     });
     chatPrefs = stored[PREFS_KEY] && typeof stored[PREFS_KEY] === "object"
       ? stored[PREFS_KEY]
@@ -73,8 +91,197 @@ async function ensureInitialized() {
     history = Array.isArray(stored[HISTORY_KEY])
       ? stored[HISTORY_KEY].filter((item) => Number(item.ts) >= cutoff).slice(0, HISTORY_LIMIT)
       : [];
+
+    const storedUpdate = stored[UPDATE_STATE_KEY];
+    if (storedUpdate && typeof storedUpdate === "object") {
+      updateState = {
+        ...updateState,
+        lastAttemptAt: Number(storedUpdate.lastAttemptAt) || 0,
+        checkedAt: Number(storedUpdate.checkedAt) || 0,
+        latestVersion: typeof storedUpdate.latestVersion === "string"
+          ? storedUpdate.latestVersion
+          : "",
+        latestUrl: typeof storedUpdate.latestUrl === "string" && storedUpdate.latestUrl
+          ? storedUpdate.latestUrl
+          : RELEASES_PAGE_URL,
+        dismissedVersion: typeof storedUpdate.dismissedVersion === "string"
+          ? storedUpdate.dismissedVersion
+          : ""
+      };
+    }
+
+    const storedWhatsNew = stored[WHATS_NEW_KEY];
+    whatsNewState = storedWhatsNew && typeof storedWhatsNew === "object"
+      ? {
+          version: String(storedWhatsNew.version || ""),
+          previousVersion: String(storedWhatsNew.previousVersion || ""),
+          pending: storedWhatsNew.pending === true
+        }
+      : null;
   })();
   return initPromise;
+}
+
+function normalizeVersion(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^v/i, "")
+    .split("-")[0];
+}
+
+function compareVersions(left, right) {
+  const a = normalizeVersion(left).split(".").map((part) => Number(part) || 0);
+  const b = normalizeVersion(right).split(".").map((part) => Number(part) || 0);
+  const length = Math.max(a.length, b.length, 3);
+
+  for (let index = 0; index < length; index += 1) {
+    const diff = (a[index] || 0) - (b[index] || 0);
+    if (diff !== 0) return diff > 0 ? 1 : -1;
+  }
+
+  return 0;
+}
+
+function updateAvailable() {
+  const currentVersion = chrome.runtime.getManifest().version;
+  return Boolean(
+    updateState.latestVersion &&
+    compareVersions(updateState.latestVersion, currentVersion) > 0 &&
+    updateState.dismissedVersion !== updateState.latestVersion
+  );
+}
+
+function releaseUrlForVersion(version) {
+  const normalized = normalizeVersion(version);
+  return normalized
+    ? RELEASES_PAGE_URL + "/tag/v" + encodeURIComponent(normalized)
+    : RELEASES_PAGE_URL;
+}
+
+function publicUpdateInfo() {
+  const currentVersion = chrome.runtime.getManifest().version;
+  return {
+    currentVersion,
+    updateAvailable: updateAvailable(),
+    latestVersion: updateState.latestVersion,
+    latestUrl: updateState.latestUrl || RELEASES_PAGE_URL,
+    checkedAt: updateState.checkedAt || 0,
+    whatsNew: whatsNewState?.pending
+      ? {
+          version: whatsNewState.version,
+          previousVersion: whatsNewState.previousVersion,
+          url: releaseUrlForVersion(whatsNewState.version)
+        }
+      : null
+  };
+}
+
+async function persistUpdateState() {
+  await chrome.storage.local.set({
+    [UPDATE_STATE_KEY]: updateState
+  });
+}
+
+async function checkForUpdates() {
+  await ensureInitialized();
+
+  const now = Date.now();
+
+  if (updateState.lastAttemptAt &&
+      now - updateState.lastAttemptAt < UPDATE_CHECK_INTERVAL_MS) {
+    return updateState;
+  }
+
+  if (updateCheckPromise) return updateCheckPromise;
+
+  updateCheckPromise = (async () => {
+    const next = {
+      ...updateState,
+      lastAttemptAt: now
+    };
+
+    try {
+      const response = await fetch(RELEASES_API_URL, {
+        headers: {
+          Accept: "application/vnd.github+json"
+        },
+        cache: "no-store"
+      });
+
+      let stable = null;
+
+      if (response.status === 404) {
+        // GitHub returns 404 when the repository has no stable release yet.
+      } else {
+        if (!response.ok) {
+          throw new Error("GitHub release request failed: " + response.status);
+        }
+
+        const release = await response.json();
+        if (release &&
+            release.draft !== true &&
+            release.prerelease !== true &&
+            typeof release.tag_name === "string") {
+          stable = release;
+        }
+      }
+
+      next.checkedAt = now;
+      next.latestVersion = stable ? normalizeVersion(stable.tag_name) : "";
+      next.latestUrl = stable?.html_url || RELEASES_PAGE_URL;
+
+      if (next.dismissedVersion &&
+          next.latestVersion &&
+          compareVersions(next.dismissedVersion, next.latestVersion) < 0) {
+        next.dismissedVersion = "";
+      }
+    } catch {
+      // Keep the last known release and throttle another network attempt for 24h.
+    }
+
+    updateState = next;
+    await persistUpdateState();
+    await updateBadge().catch(() => {});
+    return updateState;
+  })();
+
+  try {
+    return await updateCheckPromise;
+  } finally {
+    updateCheckPromise = null;
+  }
+}
+
+async function dismissUpdate(version) {
+  await ensureInitialized();
+  const normalized = normalizeVersion(version);
+  if (!normalized || normalized !== updateState.latestVersion) return false;
+
+  updateState = {
+    ...updateState,
+    dismissedVersion: normalized
+  };
+  await persistUpdateState();
+  await updateBadge().catch(() => {});
+  return true;
+}
+
+async function dismissWhatsNew(version) {
+  await ensureInitialized();
+  const normalized = normalizeVersion(version);
+  if (!whatsNewState ||
+      normalizeVersion(whatsNewState.version) !== normalized) {
+    return false;
+  }
+
+  whatsNewState = {
+    ...whatsNewState,
+    pending: false
+  };
+  await chrome.storage.local.set({
+    [WHATS_NEW_KEY]: whatsNewState
+  });
+  return true;
 }
 
 function prefsFor(key) {
@@ -103,7 +310,8 @@ function rank(state) {
     finished: 3,
     working: 4,
     interrupted: 5,
-    idle: 6
+    draft: 6,
+    idle: 7
   })[state] ?? 9;
 }
 
@@ -143,7 +351,10 @@ async function persistHistory() {
 }
 
 function recordHistory(chat, previousState) {
-  if (!chat || chat.state === previousState || chat.state === "idle") return;
+  if (!chat ||
+      chat.state === previousState ||
+      chat.state === "idle" ||
+      chat.state === "draft") return;
   history.unshift({
     ts: Date.now(),
     chatKey: chat.chatKey,
@@ -283,6 +494,16 @@ async function updateBadge() {
     return;
   }
 
+  if (updateAvailable()) {
+    await chrome.action.setBadgeText({ text: "↑" });
+    await chrome.action.setBadgeBackgroundColor({ color: "#4777c7" });
+    await chrome.action.setTitle({
+      title: "ChatGPT MultiChat Monitor - update available: v" +
+        updateState.latestVersion
+    });
+    return;
+  }
+
   await chrome.action.setBadgeText({ text: "" });
   await chrome.action.setTitle({ title: "ChatGPT MultiChat Monitor" });
 }
@@ -305,7 +526,7 @@ function upsertState(payload, tab) {
   if (["finished", "interrupted", "retry", "attention", "error"].includes(state) && !finishedAt) {
     finishedAt = now;
   }
-  if (state === "idle") {
+  if (state === "idle" || state === "draft") {
     startedAt = null;
     finishedAt = null;
   }
@@ -628,6 +849,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "monitor-get-update-info") {
+    checkForUpdates()
+      .then(() => sendResponse(publicUpdateInfo()))
+      .catch(() => sendResponse(publicUpdateInfo()));
+    return true;
+  }
+
+  if (message?.type === "monitor-dismiss-update") {
+    dismissUpdate(message.version)
+      .then((ok) => sendResponse({ ok, ...publicUpdateInfo() }))
+      .catch(() => sendResponse({ ok: false, ...publicUpdateInfo() }));
+    return true;
+  }
+
+  if (message?.type === "monitor-dismiss-whats-new") {
+    dismissWhatsNew(message.version)
+      .then((ok) => sendResponse({ ok, ...publicUpdateInfo() }))
+      .catch(() => sendResponse({ ok: false, ...publicUpdateInfo() }));
+    return true;
+  }
+
   if (message?.type === "monitor-clear-history") {
     history = [];
     chrome.storage.local.set({ [HISTORY_KEY]: [] })
@@ -732,15 +974,43 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   broadcast().catch(() => {});
 });
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.remove("monitorDoneVisibilityMs").catch(() => {});
-  injectIntoOpenTabs().catch(() => {});
+chrome.runtime.onInstalled.addListener((details) => {
+  (async () => {
+    await ensureInitialized();
+
+    if (details.reason === "update") {
+      const currentVersion = chrome.runtime.getManifest().version;
+      const previousVersion = normalizeVersion(details.previousVersion);
+
+      if (previousVersion &&
+          compareVersions(currentVersion, previousVersion) !== 0) {
+        whatsNewState = {
+          version: currentVersion,
+          previousVersion,
+          pending: true
+        };
+        await chrome.storage.local.set({
+          [WHATS_NEW_KEY]: whatsNewState
+        });
+      }
+    }
+
+    await chrome.storage.local.remove("monitorDoneVisibilityMs");
+    await injectIntoOpenTabs();
+    await checkForUpdates();
+  })().catch(() => {});
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  injectIntoOpenTabs().catch(() => {});
+  (async () => {
+    await injectIntoOpenTabs();
+    await checkForUpdates();
+  })().catch(() => {});
 });
 
 ensureInitialized()
-  .then(() => injectIntoOpenTabs())
+  .then(async () => {
+    await injectIntoOpenTabs();
+    await checkForUpdates();
+  })
   .catch(() => {});
