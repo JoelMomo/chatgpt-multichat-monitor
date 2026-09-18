@@ -14,7 +14,7 @@ The monitor is designed to stay open all day without continuously scanning conve
 - **Error** - a non-recoverable visible ChatGPT error state was detected.
 - **Done** - generation finished normally.
 - **Stopped** - generation was manually stopped.
-- **Idle** - no current or recent activity.
+- **Idle** - no current or unread activity.
 
 ### Multi-chat controls
 
@@ -45,7 +45,7 @@ The extension icon stays quiet when nothing needs attention.
 
 - `Alt+Shift+M` - show/hide the monitor on the active ChatGPT tab.
 - `Ctrl+Shift+1` - focus the next working chat.
-- `Ctrl+Shift+2` - focus the next attention/recent chat.
+- `Ctrl+Shift+2` - focus the next attention or unread Done chat.
 
 Browser shortcut conflicts can be changed from the browser's extension shortcut settings.
 
@@ -66,7 +66,7 @@ v0.2.x reduces continuous work compared with the prototype:
 - Observer-triggered checks are throttled.
 - The fast path checks ChatGPT's direct Stop signal.
 - The broad button fallback runs only every 5 seconds.
-- Retry/error detection inspects visible alert/error elements and a capped set of visible buttons only while a chat is active or recently finished.
+- Retry/error detection inspects visible alert/error elements and a capped set of visible buttons only while relevant; after a normal Done it keeps only a short late-error grace window.
 - The "Needs attention" heuristic reads only the tail of the latest assistant response once when generation finishes.
 - Live timer text is updated only in visible browser tabs.
 - The Working indicator uses a small opacity/transform pulse and can be disabled from the popup.
@@ -104,7 +104,7 @@ The popup lets you:
 - open the same **Support** page used by ChatGPT Completion Sound;
 - enable/disable sound alerts, choose a sound per state, adjust volume and test each sound.
 
-Per-chat alias, pinned and hidden preferences are stored locally.
+Per-chat alias, pinned and hidden preferences, plus the optional manual chat order, are stored locally.
 
 ## Privacy
 
@@ -114,7 +114,7 @@ It does not send data to an external server.
 
 To detect activity it observes ChatGPT interface state. For the optional **Needs attention** classification, it reads only the end of the latest assistant response at the moment generation finishes. That response text is not saved to storage or sent anywhere.
 
-Stored data is limited to settings, local chat preferences and the small activity history described above.
+Stored data is limited to settings, local chat preferences, manual chat order and the small activity history described above.
 
 ## Limitations
 
@@ -130,6 +130,7 @@ Static checks:
 node --check background.js
 node --check content.js
 node --check popup.js
+node --check offscreen.js
 Get-Content -Raw manifest.json | ConvertFrom-Json
 git diff --check
 ```

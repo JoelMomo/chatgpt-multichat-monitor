@@ -667,7 +667,12 @@ chrome.commands.onCommand.addListener((command) => {
 });
 
 chrome.tabs.onActivated.addListener((activeInfo) => {
-  acknowledgeFinishedTab(activeInfo.tabId).catch(() => {});
+  chrome.windows.get(activeInfo.windowId)
+    .then((windowInfo) => {
+      if (!windowInfo.focused) return false;
+      return acknowledgeFinishedTab(activeInfo.tabId);
+    })
+    .catch(() => {});
 });
 
 chrome.windows.onFocusChanged.addListener((windowId) => {

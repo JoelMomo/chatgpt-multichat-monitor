@@ -26,7 +26,7 @@
     },
     "next-attention-chat": {
       "suggested_key": {"default": "Ctrl+Shift+2"},
-      "description": "Focus the next attention or recently finished ChatGPT tab"
+      "description": "Focus the next attention or unread Done ChatGPT tab"
     }
   }
 }

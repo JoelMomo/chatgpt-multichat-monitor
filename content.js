@@ -10,6 +10,7 @@
   const HEARTBEAT_MS = 30000;
   const MUTATION_THROTTLE_MS = 500;
   const ERROR_SCAN_MS = 1000;
+  const LATE_ISSUE_GRACE_MS = 10000;
 
   const DEFAULTS = {
     monitorEnabled: true,
@@ -282,7 +283,12 @@
       return;
     }
 
-    const issue = localState.state !== "idle"
+    const canHaveLateIssue =
+      localState.state !== "idle" &&
+      (localState.state !== "finished" ||
+        Date.now() - (localState.finishedAt || localState.updatedAt || 0) <= LATE_ISSUE_GRACE_MS);
+
+    const issue = canHaveLateIssue
       ? detectVisibleIssue(false)
       : null;
 

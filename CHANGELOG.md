@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Final audit: verified that all declared extension permissions are actively used and host access remains limited to `chatgpt.com`.
+- A Done chat is now acknowledged on tab activation only when its browser window is actually focused; focusing that window later still acknowledges the active Done chat.
+- Normal Done chats keep only a 10-second late-error detection grace window instead of continuing retry/error scans for the entire unread period.
+- Updated current documentation and shortcut labels to use the unread Done behavior consistently.
+- Expanded the documented static checks to include `offscreen.js`.
+
 ## 0.2.7
 
 - Added persistent manual chat ordering by dragging rows with the reorder handle.
