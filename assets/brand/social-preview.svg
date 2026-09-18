@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="640" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1017"/>
+      <stop offset="1" stop-color="#111A25"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="112" y1="128" x2="970" y2="510" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#63E6D7"/>
+      <stop offset="1" stop-color="#56B9FF"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="36"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <circle cx="1080" cy="94" r="190" fill="#56B9FF" opacity=".08" filter="url(#soft)"/>
+  <circle cx="210" cy="566" r="220" fill="#63E6D7" opacity=".07" filter="url(#soft)"/>
+
+  <g transform="translate(90 110)">
+    <rect width="128" height="128" rx="30" fill="#0D131B"/>
+    <rect x="5" y="5" width="118" height="118" rx="27" fill="none" stroke="url(#accent)" stroke-width="5"/>
+    <rect x="23" y="27" width="82" height="75" rx="15" fill="#1C2632" stroke="#344153" stroke-width="2"/>
+    <rect x="31" y="37" width="66" height="17" rx="8.5" fill="#F2F6FA"/>
+    <circle cx="39" cy="45.5" r="3.3" fill="#63E6D7"/>
+    <rect x="47" y="43" width="30" height="4" rx="2" fill="#273445"/>
+    <rect x="31" y="58" width="66" height="17" rx="8.5" fill="#F2F6FA"/>
+    <circle cx="39" cy="66.5" r="3.3" fill="#72D99B"/>
+    <rect x="47" y="64" width="26" height="4" rx="2" fill="#273445"/>
+    <rect x="31" y="79" width="66" height="17" rx="8.5" fill="#F2F6FA"/>
+    <circle cx="39" cy="87.5" r="3.3" fill="#FFD65A"/>
+    <rect x="47" y="85" width="34" height="4" rx="2" fill="#273445"/>
+  </g>
+
+  <text x="90" y="304" fill="#F5F7FA" font-family="Segoe UI,Arial,sans-serif" font-size="58" font-weight="750" letter-spacing="-2">ChatGPT MultiChat</text>
+  <text x="90" y="370" fill="#F5F7FA" font-family="Segoe UI,Arial,sans-serif" font-size="58" font-weight="750" letter-spacing="-2">Monitor</text>
+  <text x="92" y="425" fill="#9EABBC" font-family="Segoe UI,Arial,sans-serif" font-size="25">Lightweight floating monitor for active ChatGPT conversations.</text>
+
+  <g transform="translate(92 474)">
+    <rect width="145" height="39" rx="19.5" fill="#18222D" stroke="#2E3A49"/>
+    <circle cx="21" cy="19.5" r="5" fill="#63E6D7"/>
+    <text x="36" y="26" fill="#CBD5E1" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="600">Multi-tab</text>
+    <rect x="158" width="120" height="39" rx="19.5" fill="#18222D" stroke="#2E3A49"/>
+    <circle cx="179" cy="19.5" r="5" fill="#72D99B"/>
+    <text x="194" y="26" fill="#CBD5E1" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="600">Local</text>
+    <rect x="291" width="150" height="39" rx="19.5" fill="#18222D" stroke="#2E3A49"/>
+    <circle cx="312" cy="19.5" r="5" fill="#56B9FF"/>
+    <text x="327" y="26" fill="#CBD5E1" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="600">Lightweight</text>
+  </g>
+
+  <g transform="translate(765 92)">
+    <rect width="420" height="456" rx="30" fill="#12171F" stroke="#303846" stroke-width="2"/>
+    <rect width="420" height="66" rx="30" fill="#151C25"/>
+    <path d="M0 66H420" stroke="#29313D"/>
+    <text x="28" y="41" fill="#F5F7FA" font-family="Segoe UI,Arial,sans-serif" font-size="20" font-weight="700">ChatGPT Monitor</text>
+    <rect x="322" y="21" width="42" height="24" rx="12" fill="#194D47"/>
+    <text x="343" y="38" text-anchor="middle" fill="#73F0DF" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="800">2</text>
+
+    <g transform="translate(18 86)">
+      <rect width="384" height="66" rx="15" fill="#1A202A"/>
+      <circle cx="30" cy="33" r="6" fill="#63E6D7"/>
+      <text x="52" y="29" fill="#F5F7FA" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="650">Frontend refactor</text>
+      <text x="52" y="48" fill="#8E9BAD" font-family="Segoe UI,Arial,sans-serif" font-size="12">Working 3:42</text>
+      <text x="349" y="39" fill="#7F8B9B" font-family="Segoe UI,Arial,sans-serif" font-size="20" font-weight="800">•••</text>
+    </g>
+    <g transform="translate(18 160)">
+      <rect width="384" height="66" rx="15" fill="#161C24"/>
+      <circle cx="30" cy="33" r="6" fill="#72D99B"/>
+      <text x="52" y="29" fill="#F5F7FA" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="650">Release checklist</text>
+      <text x="52" y="48" fill="#8E9BAD" font-family="Segoe UI,Arial,sans-serif" font-size="12">Done</text>
+      <text x="349" y="39" fill="#7F8B9B" font-family="Segoe UI,Arial,sans-serif" font-size="20" font-weight="800">•••</text>
+    </g>
+    <g transform="translate(18 234)">
+      <rect width="384" height="66" rx="15" fill="#161C24"/>
+      <circle cx="30" cy="33" r="6" fill="#FFD65A"/>
+      <text x="52" y="29" fill="#F5F7FA" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="650">API migration</text>
+      <text x="52" y="48" fill="#8E9BAD" font-family="Segoe UI,Arial,sans-serif" font-size="12">Retry needed</text>
+      <text x="349" y="39" fill="#7F8B9B" font-family="Segoe UI,Arial,sans-serif" font-size="20" font-weight="800">•••</text>
+    </g>
+    <g transform="translate(18 308)">
+      <rect width="384" height="66" rx="15" fill="#161C24"/>
+      <circle cx="30" cy="33" r="6" fill="#FF914D"/>
+      <text x="52" y="29" fill="#F5F7FA" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="650">Research notes</text>
+      <text x="52" y="48" fill="#8E9BAD" font-family="Segoe UI,Arial,sans-serif" font-size="12">Needs attention</text>
+      <text x="349" y="39" fill="#7F8B9B" font-family="Segoe UI,Arial,sans-serif" font-size="20" font-weight="800">•••</text>
+    </g>
+    <text x="210" y="424" text-anchor="middle" fill="#6F7C8E" font-family="Segoe UI,Arial,sans-serif" font-size="12">Click to switch · drag ⋮⋮ to reorder</text>
+  </g>
+</svg>

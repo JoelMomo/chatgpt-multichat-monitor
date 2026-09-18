@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added the final MultiChat Monitor icon set and wired it into the extension manifest/action.
+- Added presentation assets: normal monitor, compact monitor, drag-order and popup screenshots.
+- Added a matching 1280×640 social preview asset.
+- Reworked the README into a visual project landing page with screenshots, feature highlights and a state/color legend.
 - Final audit: verified that all declared extension permissions are actively used and host access remains limited to `chatgpt.com`.
 - A Done chat is now acknowledged on tab activation only when its browser window is actually focused; focusing that window later still acknowledges the active Done chat.
 - Normal Done chats keep only a 10-second late-error detection grace window instead of continuing retry/error scans for the entire unread period.
