@@ -1,53 +1,185 @@
 const chats = new Map();
 
+const PREFS_KEY = "monitorChatPrefs";
+const HISTORY_KEY = "monitorHistory";
+const HISTORY_LIMIT = 100;
+const HISTORY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+let chatPrefs = {};
+let history = [];
+let initPromise = null;
+
 function cleanTitle(title) {
   const value = String(title || "")
-    .replace(/\s+(?:-||)\s+ChatGPT\s*$/i, "")
+    .replace(/\s+-\s+ChatGPT\s*$/i, "")
     .trim();
   return value && value.toLowerCase() !== "chatgpt" ? value : "ChatGPT";
 }
 
+function chatKeyFromUrl(url, tabId) {
+  try {
+    const parsed = new URL(url || "");
+    const match = parsed.pathname.match(/^\/(?:c|g)\/([^/?#]+)/);
+    if (match) return "conversation:" + match[1];
+    if (parsed.pathname && parsed.pathname !== "/") {
+      return "path:" + parsed.pathname.replace(/\/+$/, "");
+    }
+  } catch {}
+  return "tab:" + String(tabId ?? "unknown");
+}
+
+async function ensureInitialized() {
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    const stored = await chrome.storage.local.get({
+      [PREFS_KEY]: {},
+      [HISTORY_KEY]: []
+    });
+    chatPrefs = stored[PREFS_KEY] && typeof stored[PREFS_KEY] === "object"
+      ? stored[PREFS_KEY]
+      : {};
+    const cutoff = Date.now() - HISTORY_MAX_AGE_MS;
+    history = Array.isArray(stored[HISTORY_KEY])
+      ? stored[HISTORY_KEY].filter((item) => Number(item.ts) >= cutoff).slice(0, HISTORY_LIMIT)
+      : [];
+  })();
+  return initPromise;
+}
+
+function prefsFor(key) {
+  const prefs = chatPrefs[key];
+  return prefs && typeof prefs === "object" ? prefs : {};
+}
+
+function decorate(chat) {
+  const prefs = prefsFor(chat.chatKey);
+  return {
+    ...chat,
+    alias: typeof prefs.alias === "string" ? prefs.alias : "",
+    pinned: prefs.pinned === true,
+    hidden: prefs.hidden === true,
+    displayTitle: (typeof prefs.alias === "string" && prefs.alias.trim())
+      ? prefs.alias.trim()
+      : chat.title
+  };
+}
+
+function rank(state) {
+  return ({
+    attention: 0,
+    error: 1,
+    finished: 2,
+    working: 3,
+    interrupted: 4,
+    idle: 5
+  })[state] ?? 9;
+}
+
 function snapshot() {
-  return [...chats.values()].sort((a, b) => {
-    const rank = { working: 0, finished: 1, interrupted: 2, idle: 3 };
-    const byState = (rank[a.state] ?? 9) - (rank[b.state] ?? 9);
-    return byState || (b.updatedAt || 0) - (a.updatedAt || 0);
+  return [...chats.values()]
+    .map(decorate)
+    .sort((a, b) => {
+      const pinOrder = Number(b.pinned) - Number(a.pinned);
+      if (pinOrder) return pinOrder;
+      const stateOrder = rank(a.state) - rank(b.state);
+      if (stateOrder) return stateOrder;
+      if (a.state === "working" && b.state === "working") {
+        return (a.startedAt || Infinity) - (b.startedAt || Infinity);
+      }
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
+}
+
+async function persistHistory() {
+  const cutoff = Date.now() - HISTORY_MAX_AGE_MS;
+  history = history
+    .filter((item) => Number(item.ts) >= cutoff)
+    .slice(0, HISTORY_LIMIT);
+  await chrome.storage.local.set({ [HISTORY_KEY]: history });
+}
+
+function recordHistory(chat, previousState) {
+  if (!chat || chat.state === previousState || chat.state === "idle") return;
+  history.unshift({
+    ts: Date.now(),
+    chatKey: chat.chatKey,
+    title: decorate(chat).displayTitle,
+    state: chat.state
   });
+  persistHistory().catch(() => {});
+}
+
+async function updateBadge() {
+  const data = snapshot().filter((chat) => !chat.hidden);
+  const attentionCount = data.filter((chat) =>
+    chat.state === "attention" || chat.state === "error"
+  ).length;
+  const workingCount = data.filter((chat) => chat.state === "working").length;
+
+  if (attentionCount > 0) {
+    await chrome.action.setBadgeText({ text: "!" });
+    await chrome.action.setBadgeBackgroundColor({ color: "#b56b2d" });
+    await chrome.action.setTitle({
+      title: "ChatGPT MultiChat Monitor - " + attentionCount +
+        " chat" + (attentionCount === 1 ? "" : "s") + " need attention"
+    });
+    return;
+  }
+
+  if (workingCount > 0) {
+    await chrome.action.setBadgeText({ text: String(Math.min(workingCount, 99)) });
+    await chrome.action.setBadgeBackgroundColor({ color: "#287f77" });
+    await chrome.action.setTitle({
+      title: "ChatGPT MultiChat Monitor - " + workingCount + " working"
+    });
+    return;
+  }
+
+  await chrome.action.setBadgeText({ text: "" });
+  await chrome.action.setTitle({ title: "ChatGPT MultiChat Monitor" });
 }
 
 function upsertState(payload, tab) {
   if (!tab || !Number.isInteger(tab.id)) return;
   const now = Date.now();
+  const hadPrevious = chats.has(tab.id);
   const previous = chats.get(tab.id) || {};
+  const state = payload.state || "idle";
+  const chatKey = chatKeyFromUrl(payload.url || tab.url, tab.id);
 
   let startedAt = payload.startedAt ?? previous.startedAt ?? null;
   let finishedAt = payload.finishedAt ?? previous.finishedAt ?? null;
 
-  if (payload.state === "working" && previous.state !== "working" && !payload.startedAt) {
+  if (state === "working" && previous.state !== "working" && !payload.startedAt) {
     startedAt = now;
     finishedAt = null;
   }
-  if ((payload.state === "finished" || payload.state === "interrupted") && !finishedAt) {
+  if (["finished", "interrupted", "attention", "error"].includes(state) && !finishedAt) {
     finishedAt = now;
   }
-  if (payload.state === "idle") {
+  if (state === "idle") {
     startedAt = null;
     finishedAt = null;
   }
 
-  chats.set(tab.id, {
+  const next = {
     tabId: tab.id,
     windowId: tab.windowId,
+    chatKey,
     title: cleanTitle(payload.title || tab.title),
     url: payload.url || tab.url || "",
-    state: payload.state || "idle",
+    state,
     startedAt,
     finishedAt,
     updatedAt: payload.updatedAt || now
-  });
+  };
+
+  chats.set(tab.id, next);
+  if (hadPrevious) recordHistory(next, previous.state);
 }
 
 async function broadcast() {
+  await ensureInitialized();
   const data = snapshot();
   let tabs = [];
   try {
@@ -64,9 +196,11 @@ async function broadcast() {
         chats: data
       }))
   );
+  await updateBadge();
 }
 
 async function rebuildRegistry() {
+  await ensureInitialized();
   let tabs = [];
   try {
     tabs = await chrome.tabs.query({ url: "https://chatgpt.com/*" });
@@ -103,6 +237,70 @@ async function activateTab(tabId) {
   }
 }
 
+async function setChatPreference(chatKey, patch) {
+  await ensureInitialized();
+  if (!chatKey || typeof patch !== "object" || patch === null) return false;
+  const current = prefsFor(chatKey);
+  const next = { ...current };
+
+  if (Object.prototype.hasOwnProperty.call(patch, "alias")) {
+    const alias = String(patch.alias || "").trim().slice(0, 60);
+    if (alias) next.alias = alias;
+    else delete next.alias;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "pinned")) {
+    next.pinned = patch.pinned === true;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "hidden")) {
+    next.hidden = patch.hidden === true;
+  }
+
+  if (!next.alias && !next.pinned && !next.hidden) delete chatPrefs[chatKey];
+  else chatPrefs[chatKey] = next;
+
+  await chrome.storage.local.set({ [PREFS_KEY]: chatPrefs });
+  return true;
+}
+
+async function cycleChat(states) {
+  await rebuildRegistry();
+  const data = snapshot().filter((chat) =>
+    !chat.hidden && states.includes(chat.state)
+  );
+  if (!data.length) return false;
+
+  let active = null;
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    active = tabs[0] || null;
+  } catch {}
+
+  const currentIndex = active
+    ? data.findIndex((chat) => chat.tabId === active.id)
+    : -1;
+  const next = data[(currentIndex + 1 + data.length) % data.length];
+  return activateTab(next.tabId);
+}
+
+async function toggleMonitorInActiveTab() {
+  let tabs = [];
+  try {
+    tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  } catch {
+    return false;
+  }
+  const tab = tabs[0];
+  if (!tab || !Number.isInteger(tab.id) || !String(tab.url || "").startsWith("https://chatgpt.com/")) {
+    return false;
+  }
+  try {
+    await chrome.tabs.sendMessage(tab.id, { type: "monitor-toggle-overlay" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function injectIntoOpenTabs() {
   let tabs = [];
   try {
@@ -126,9 +324,13 @@ async function injectIntoOpenTabs() {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "monitor-state") {
-    upsertState(message, sender.tab);
-    broadcast().catch(() => {});
-    sendResponse({ ok: true });
+    ensureInitialized()
+      .then(() => {
+        upsertState(message, sender.tab);
+        return broadcast();
+      })
+      .then(() => sendResponse({ ok: true }))
+      .catch(() => sendResponse({ ok: false }));
     return true;
   }
 
@@ -145,6 +347,55 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
+
+  if (message?.type === "monitor-set-chat-pref") {
+    setChatPreference(String(message.chatKey || ""), message.patch || {})
+      .then((ok) => broadcast().then(() => sendResponse({ ok })))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-unhide-all") {
+    ensureInitialized()
+      .then(async () => {
+        for (const key of Object.keys(chatPrefs)) {
+          if (chatPrefs[key]?.hidden) {
+            chatPrefs[key] = { ...chatPrefs[key], hidden: false };
+            if (!chatPrefs[key].alias && !chatPrefs[key].pinned) delete chatPrefs[key];
+          }
+        }
+        await chrome.storage.local.set({ [PREFS_KEY]: chatPrefs });
+        await broadcast();
+        sendResponse({ ok: true });
+      })
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-get-history") {
+    ensureInitialized()
+      .then(() => sendResponse({ history: history.slice(0, 20) }))
+      .catch(() => sendResponse({ history: [] }));
+    return true;
+  }
+
+  if (message?.type === "monitor-clear-history") {
+    history = [];
+    chrome.storage.local.set({ [HISTORY_KEY]: [] })
+      .then(() => sendResponse({ ok: true }))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+});
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command === "toggle-monitor") {
+    toggleMonitorInActiveTab().catch(() => {});
+  } else if (command === "next-working-chat") {
+    cycleChat(["working"]).catch(() => {});
+  } else if (command === "next-attention-chat") {
+    cycleChat(["attention", "error", "finished"]).catch(() => {});
+  }
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
@@ -153,20 +404,23 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (!changeInfo.url) return;
-  if (!changeInfo.url.startsWith("https://chatgpt.com/")) {
+  if (!changeInfo.url && !changeInfo.title) return;
+  if (changeInfo.url && !changeInfo.url.startsWith("https://chatgpt.com/")) {
     if (chats.delete(tabId)) broadcast().catch(() => {});
     return;
   }
   const previous = chats.get(tabId);
-  if (previous) {
-    chats.set(tabId, {
-      ...previous,
-      title: cleanTitle(tab.title || previous.title),
-      url: changeInfo.url,
-      updatedAt: Date.now()
-    });
-  }
+  if (!previous) return;
+
+  const nextUrl = changeInfo.url || tab.url || previous.url;
+  chats.set(tabId, {
+    ...previous,
+    chatKey: chatKeyFromUrl(nextUrl, tabId),
+    title: cleanTitle(changeInfo.title || tab.title || previous.title),
+    url: nextUrl,
+    updatedAt: Date.now()
+  });
+  broadcast().catch(() => {});
 });
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -177,4 +431,6 @@ chrome.runtime.onStartup.addListener(() => {
   injectIntoOpenTabs().catch(() => {});
 });
 
-injectIntoOpenTabs().catch(() => {});
+ensureInitialized()
+  .then(() => injectIntoOpenTabs())
+  .catch(() => {});

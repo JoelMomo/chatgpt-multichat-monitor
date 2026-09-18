@@ -2,32 +2,73 @@
 
 A lightweight Chrome/Edge extension that adds a floating monitor to ChatGPT and shows what your other ChatGPT tabs are doing.
 
-## Current prototype
+## v0.2.0
 
-The first version includes:
+The monitor is designed to stay open all day without continuously scanning conversation content.
 
-- Shared state across all open `chatgpt.com` tabs.
-- Working, finished, stopped and idle states.
-- Live elapsed-time counters for active chats.
-- Recently finished chats remain visible for three minutes.
-- Click any row to focus that browser tab.
-- Draggable overlay with saved position.
-- Collapsible overlay with saved state.
-- Optional idle-chat visibility.
-- DOM updates are patched row by row instead of rebuilding the full panel, reducing flicker.
-- Re-injection into already open ChatGPT tabs after extension reload.
+### Monitor states
 
-## How it works
+- **Working** - ChatGPT is currently generating.
+- **Needs attention** - the response finished with a likely question or explicit request for user input.
+- **Error** - a visible ChatGPT error/retry state was detected.
+- **Done** - generation finished normally.
+- **Stopped** - generation was manually stopped.
+- **Idle** - no current or recent activity.
 
-Each ChatGPT tab runs a small content script that watches the page for the response Stop button and relevant DOM changes. It reports only status metadata to the extension service worker:
+### Multi-chat controls
 
-- tab id;
-- chat title;
-- page URL;
-- state;
-- start/finish timestamps.
+- Shared status across all open `chatgpt.com` tabs.
+- Live elapsed time for working chats.
+- Recently finished/stopped chats remain visible briefly.
+- Click a row to focus the correct tab and browser window.
+- Pin important chats.
+- Hide chats you do not want to monitor.
+- Give chats local aliases without changing their real ChatGPT title.
+- Right-click a row or use its **...** menu for chat options.
+- Smart ordering prioritizes pinned chats and states requiring attention.
+- Compact mode.
+- Draggable and collapsible overlay with saved position.
 
-The background worker combines those reports and broadcasts one shared snapshot back to every ChatGPT tab. The floating UI is rendered inside a Shadow DOM so ChatGPT styles do not leak into the monitor.
+### Browser badge
+
+The extension icon stays quiet when nothing needs attention.
+
+- A number shows how many chats are working.
+- **!** means at least one chat needs attention or has an error.
+
+### Keyboard shortcuts
+
+- `Ctrl+Shift+M` - show/hide the monitor on the active ChatGPT tab.
+- `Ctrl+Shift+1` - focus the next working chat.
+- `Ctrl+Shift+2` - focus the next attention/recent chat.
+
+Browser shortcut conflicts can be changed from the browser's extension shortcut settings.
+
+### Recent activity
+
+The popup keeps a small local history of state changes:
+
+- maximum 100 events;
+- maximum age 24 hours;
+- title, state and timestamp only;
+- no response or conversation text is stored.
+
+## Lightweight design
+
+v0.2.0 reduces continuous work compared with the prototype:
+
+- `MutationObserver` reacts to relevant DOM changes.
+- Observer-triggered checks are throttled.
+- The fast path checks ChatGPT's direct Stop signal.
+- The broad button fallback runs only every 5 seconds.
+- Error detection inspects only visible alert/error elements.
+- The "Needs attention" heuristic reads only the tail of the latest assistant response once when generation finishes.
+- Live timer text is updated only in visible browser tabs.
+- The old continuous pulsing animation was removed.
+- State-change animation is one short optional highlight.
+- Rows are updated in place instead of rebuilding the full overlay.
+
+There are no external network requests and no background polling service.
 
 ## Install for testing
 
@@ -36,40 +77,49 @@ The background worker combines those reports and broadcasts one shared snapshot 
 3. Enable **Developer mode**.
 4. Choose **Load unpacked**.
 5. Select this repository folder.
-6. Reload any ChatGPT tabs that were already open.
+6. Reload any ChatGPT tabs that were already open if required.
 
-The extension also tries to re-inject itself into already open ChatGPT tabs when the extension is reloaded.
+The extension also tries to inject itself into already open ChatGPT tabs after an extension reload.
 
 ## Settings
 
-Click the extension button to:
+The popup lets you:
 
 - enable/disable the floating monitor;
-- show/hide idle ChatGPT tabs.
+- show/hide idle chats;
+- enable compact mode;
+- disable the short state-change animation;
+- restore all hidden chats;
+- view or clear recent activity.
 
-Overlay position and collapsed state are stored locally.
+Per-chat alias, pinned and hidden preferences are stored locally.
 
 ## Privacy
 
 The extension runs only on `https://chatgpt.com/*`.
 
-It does not read or transmit conversation text. The monitor uses the page title, URL and response state needed to identify and switch between browser tabs. Settings stay in local browser storage.
+It does not send data to an external server.
+
+To detect activity it observes ChatGPT interface state. For the optional **Needs attention** classification, it reads only the end of the latest assistant response at the moment generation finishes. That response text is not saved to storage or sent anywhere.
+
+Stored data is limited to settings, local chat preferences and the small activity history described above.
 
 ## Limitations
 
-ChatGPT does not expose a public browser API that directly reports whether a conversation is currently generating. The extension therefore infers activity from visible interface state. If ChatGPT changes its frontend, the detector may require an update.
+ChatGPT does not expose a public browser API that reports whether a conversation is generating. Activity is inferred from the visible interface, so a future ChatGPT frontend change may require detector updates.
 
-This prototype intentionally keeps detection simple before adding more speculative states such as "waiting for user" or detailed error classification.
+"Needs attention" is intentionally conservative and heuristic. A response ending in a question can be classified as attention even when no reply is strictly required.
 
 ## Development
 
-Syntax checks:
+Static checks:
 
 ```powershell
 node --check background.js
 node --check content.js
 node --check popup.js
 Get-Content -Raw manifest.json | ConvertFrom-Json
+git diff --check
 ```
 
 ## License

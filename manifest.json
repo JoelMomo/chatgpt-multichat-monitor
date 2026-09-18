@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT MultiChat Monitor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A lightweight floating monitor for active ChatGPT conversations across browser tabs.",
   "permissions": ["storage", "tabs", "scripting"],
   "host_permissions": ["https://chatgpt.com/*"],
@@ -14,5 +14,19 @@
   "action": {
     "default_title": "ChatGPT MultiChat Monitor",
     "default_popup": "popup.html"
+  },
+  "commands": {
+    "toggle-monitor": {
+      "suggested_key": {"default": "Ctrl+Shift+M"},
+      "description": "Show or hide the monitor on the active ChatGPT tab"
+    },
+    "next-working-chat": {
+      "suggested_key": {"default": "Ctrl+Shift+1"},
+      "description": "Focus the next working ChatGPT tab"
+    },
+    "next-attention-chat": {
+      "suggested_key": {"default": "Ctrl+Shift+2"},
+      "description": "Focus the next attention or recently finished ChatGPT tab"
+    }
   }
 }

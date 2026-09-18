@@ -1,0 +1,27 @@
+# Changelog
+
+## 0.2.0
+
+- Added **Needs attention** and **Error** states.
+- Added extension badge for working and attention states.
+- Added pin, hide and local alias controls per chat.
+- Added smart ordering and multi-window tab focusing.
+- Added compact mode.
+- Added optional one-shot state transition animation.
+- Added 24-hour / 100-event local activity history.
+- Added keyboard shortcuts for monitor visibility and chat navigation.
+- Added popup controls for hidden chats and history.
+- Improved detector efficiency with throttled mutation handling.
+- Reduced broad fallback scans from every second to every five seconds.
+- Removed continuous working animation.
+- Paused timer repaint work in hidden tabs.
+- Added conservative finish-time attention detection.
+
+## 0.1.0
+
+- Initial prototype.
+- Shared state across ChatGPT tabs.
+- Working, done, stopped and idle states.
+- Live timers.
+- Draggable and collapsible overlay.
+- Click-to-focus navigation.
