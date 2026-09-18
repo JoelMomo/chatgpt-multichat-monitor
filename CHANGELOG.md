@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3
+
+- Added the same **Support** button used by ChatGPT Completion Sound.
+- Support opens `https://joelmomo.github.io/#support` in a new tab.
+- The button is a static link and adds no background work or extra permissions.
+
 ## 0.2.2
 
 - Added **Retry needed** for recoverable timeout, delivery, network and retry states.

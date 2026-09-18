@@ -2,7 +2,7 @@
 
 A lightweight Chrome/Edge extension that adds a floating monitor to ChatGPT and shows what your other ChatGPT tabs are doing.
 
-## v0.2.2
+## v0.2.3
 
 The monitor is designed to stay open all day without continuously scanning conversation content.
 
@@ -91,7 +91,8 @@ The popup lets you:
 - enable compact mode;
 - disable the short state-change animation;
 - restore all hidden chats;
-- view or clear recent activity.
+- view or clear recent activity;
+- open the same **Support** page used by ChatGPT Completion Sound.
 
 Per-chat alias, pinned and hidden preferences are stored locally.
 
