@@ -20,6 +20,11 @@ button:hover{background:#222c39}.support{grid-column:1/-1;border:0;color:#061218
 .support:hover{filter:brightness(1.07)}.history{max-height:138px;overflow:auto}.event{padding:7px 10px;border-bottom:1px solid #242d39}.event:last-child{border-bottom:0}
 .event-top{display:flex;gap:6px;align-items:center}.event-state{font-size:9px;text-transform:uppercase;color:var(--accent);font-weight:800}.event-title{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .event-time{font-size:9px;color:var(--muted)}.empty{padding:11px;color:var(--muted);text-align:center;font-size:10px}.keys{padding:10px 12px;color:var(--muted);font-size:10px}
+.sound-card{padding:11px 12px}.sound-master{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:10px;margin-bottom:9px;border-bottom:1px solid var(--line)}
+.sound-settings{transition:opacity .15s}.sound-settings.muted{opacity:.6}.sound-row{display:grid;grid-template-columns:86px 1fr 34px;align-items:center;gap:6px;margin-top:7px}
+.sound-name{font-size:11px;font-weight:650;color:#dbe3ec}.sound-row select{min-width:0;width:100%;height:29px;border:1px solid #354052;border-radius:8px;background:#111821;color:var(--text);padding:0 6px;font:11px system-ui}
+.sound-test{min-height:29px;width:34px;padding:0;font-size:12px}.volume-row{display:grid;grid-template-columns:86px 1fr;align-items:center;gap:6px;margin-top:10px}.volume-row input{width:100%;accent-color:var(--accent)}
+.sound-note{margin-top:8px;color:var(--muted);font-size:9px}
 kbd{padding:1px 4px;border:1px solid #3c4758;border-bottom-width:2px;border-radius:4px;color:#dbe3ec;background:#111821}.footer{text-align:center;color:#687587;font-size:9px;margin-top:10px}
 </style>
 </head>
@@ -38,6 +43,53 @@ kbd{padding:1px 4px;border:1px solid #3c4758;border-bottom-width:2px;border-radi
   <button id="restoreHidden" type="button">Restore hidden</button>
   <button id="clearHistory" type="button">Clear history</button>
   <a class="support" href="https://joelmomo.github.io/#support" target="_blank" rel="noreferrer">Support</a>
+</div>
+
+<div class="section-title">Sound alerts</div>
+<div class="card sound-card">
+  <div class="sound-master">
+    <div>
+      <div class="label">Sound alerts</div>
+      <div class="hint">Play a local sound when a monitored state changes.</div>
+    </div>
+    <label class="switch"><input id="soundsEnabled" type="checkbox"><span class="slider"></span></label>
+  </div>
+
+  <div class="sound-settings" id="soundSettings">
+    <div class="sound-row">
+      <span class="sound-name">Done</span>
+      <select id="soundDone">
+        <option value="off">Off</option><option value="pop">Pop</option><option value="cash-register">Cash Register</option><option value="chan">Chan</option><option value="potion">Potion</option><option value="point">Point</option><option value="page-turn">Page Turn</option>
+      </select>
+      <button class="sound-test" type="button" data-sound-key="soundDone" title="Test Done sound">▶</button>
+    </div>
+    <div class="sound-row">
+      <span class="sound-name">Retry</span>
+      <select id="soundRetry">
+        <option value="off">Off</option><option value="pop">Pop</option><option value="cash-register">Cash Register</option><option value="chan">Chan</option><option value="potion">Potion</option><option value="point">Point</option><option value="page-turn">Page Turn</option>
+      </select>
+      <button class="sound-test" type="button" data-sound-key="soundRetry" title="Test Retry sound">▶</button>
+    </div>
+    <div class="sound-row">
+      <span class="sound-name">Attention</span>
+      <select id="soundAttention">
+        <option value="off">Off</option><option value="pop">Pop</option><option value="cash-register">Cash Register</option><option value="chan">Chan</option><option value="potion">Potion</option><option value="point">Point</option><option value="page-turn">Page Turn</option>
+      </select>
+      <button class="sound-test" type="button" data-sound-key="soundAttention" title="Test attention sound">▶</button>
+    </div>
+    <div class="sound-row">
+      <span class="sound-name">Error</span>
+      <select id="soundError">
+        <option value="off">Off</option><option value="pop">Pop</option><option value="cash-register">Cash Register</option><option value="chan">Chan</option><option value="potion">Potion</option><option value="point">Point</option><option value="page-turn">Page Turn</option>
+      </select>
+      <button class="sound-test" type="button" data-sound-key="soundError" title="Test Error sound">▶</button>
+    </div>
+    <div class="volume-row">
+      <span class="sound-name">Volume</span>
+      <input id="soundVolume" type="range" min="0" max="1" step="0.05">
+    </div>
+    <div class="sound-note">Done is off by default to avoid overlapping Completion Sound.</div>
+  </div>
 </div>
 
 <div class="section-title">Recent activity</div>

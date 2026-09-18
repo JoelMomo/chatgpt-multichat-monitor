@@ -5,9 +5,36 @@ const HISTORY_KEY = "monitorHistory";
 const HISTORY_LIMIT = 100;
 const HISTORY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
+const SOUND_DEFAULTS = {
+  monitorSoundsEnabled: true,
+  monitorSoundDone: "off",
+  monitorSoundRetry: "potion",
+  monitorSoundAttention: "point",
+  monitorSoundError: "chan",
+  monitorSoundVolume: 0.8
+};
+
+const VALID_SOUNDS = new Set([
+  "off",
+  "pop",
+  "cash-register",
+  "chan",
+  "potion",
+  "point",
+  "page-turn"
+]);
+
+const SOUND_KEY_BY_STATE = {
+  finished: "monitorSoundDone",
+  retry: "monitorSoundRetry",
+  attention: "monitorSoundAttention",
+  error: "monitorSoundError"
+};
+
 let chatPrefs = {};
 let history = [];
 let initPromise = null;
+let lastAudioRequestAt = 0;
 
 function cleanTitle(title) {
   const value = String(title || "")
@@ -107,6 +134,83 @@ function recordHistory(chat, previousState) {
   persistHistory().catch(() => {});
 }
 
+async function getSoundSettings() {
+  const stored = await chrome.storage.local.get(SOUND_DEFAULTS);
+  const volumeValue = Number(stored.monitorSoundVolume);
+  const settings = {
+    monitorSoundsEnabled: stored.monitorSoundsEnabled !== false,
+    monitorSoundVolume: Number.isFinite(volumeValue)
+      ? Math.max(0, Math.min(1, volumeValue))
+      : SOUND_DEFAULTS.monitorSoundVolume
+  };
+
+  for (const key of Object.values(SOUND_KEY_BY_STATE)) {
+    settings[key] = VALID_SOUNDS.has(stored[key])
+      ? stored[key]
+      : SOUND_DEFAULTS[key];
+  }
+
+  return settings;
+}
+
+async function ensureOffscreen() {
+  let exists = false;
+
+  if (chrome.offscreen.hasDocument) {
+    exists = await chrome.offscreen.hasDocument();
+  } else {
+    const contexts = await chrome.runtime.getContexts({
+      contextTypes: ["OFFSCREEN_DOCUMENT"]
+    });
+    exists = contexts.length > 0;
+  }
+
+  if (!exists) {
+    await chrome.offscreen.createDocument({
+      url: "offscreen.html",
+      reasons: ["AUDIO_PLAYBACK"],
+      justification: "Play a local sound when a monitored ChatGPT state changes."
+    });
+  }
+}
+
+async function playSound(sound, volume) {
+  if (!VALID_SOUNDS.has(sound) || sound === "off") return false;
+  lastAudioRequestAt = Date.now();
+  await ensureOffscreen();
+  await chrome.runtime.sendMessage({
+    target: "offscreen",
+    type: "play",
+    sound,
+    volume
+  });
+  return true;
+}
+
+async function maybePlayStateSound(chat) {
+  if (!chat || prefsFor(chat.chatKey).hidden) return;
+  const key = SOUND_KEY_BY_STATE[chat.state];
+  if (!key) return;
+
+  const settings = await getSoundSettings();
+  if (!settings.monitorSoundsEnabled) return;
+  await playSound(settings[key], settings.monitorSoundVolume);
+}
+
+async function closeOffscreenIfIdle() {
+  if (Date.now() - lastAudioRequestAt < 7000) return;
+
+  try {
+    const exists = chrome.offscreen.hasDocument
+      ? await chrome.offscreen.hasDocument()
+      : (await chrome.runtime.getContexts({
+          contextTypes: ["OFFSCREEN_DOCUMENT"]
+        })).length > 0;
+
+    if (exists) await chrome.offscreen.closeDocument();
+  } catch {}
+}
+
 async function updateBadge() {
   const data = snapshot().filter((chat) => !chat.hidden);
   const attentionCount = data.filter((chat) =>
@@ -173,7 +277,12 @@ function upsertState(payload, tab) {
   };
 
   chats.set(tab.id, next);
-  if (hadPrevious) recordHistory(next, previous.state);
+  if (hadPrevious) {
+    recordHistory(next, previous.state);
+    if (previous.state !== next.state) {
+      maybePlayStateSound(next).catch(() => {});
+    }
+  }
 }
 
 async function broadcast() {
@@ -382,6 +491,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.storage.local.set({ [HISTORY_KEY]: [] })
       .then(() => sendResponse({ ok: true }))
       .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-test-sound") {
+    const sound = VALID_SOUNDS.has(message.sound) ? message.sound : "off";
+    const volumeValue = Number(message.volume);
+    const volume = Number.isFinite(volumeValue)
+      ? Math.max(0, Math.min(1, volumeValue))
+      : SOUND_DEFAULTS.monitorSoundVolume;
+
+    playSound(sound, volume)
+      .then((played) => sendResponse({ ok: true, played }))
+      .catch(() => sendResponse({ ok: false, played: false }));
+    return true;
+  }
+
+  if (message?.type === "offscreen-audio-idle") {
+    closeOffscreenIfIdle().catch(() => {});
+    sendResponse({ ok: true });
     return true;
   }
 });

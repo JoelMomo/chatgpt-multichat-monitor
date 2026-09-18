@@ -2,7 +2,7 @@
 
 A lightweight Chrome/Edge extension that adds a floating monitor to ChatGPT and shows what your other ChatGPT tabs are doing.
 
-## v0.2.3
+## v0.2.4
 
 The monitor is designed to stay open all day without continuously scanning conversation content.
 
@@ -29,6 +29,7 @@ The monitor is designed to stay open all day without continuously scanning conve
 - Smart ordering prioritizes pinned chats and states requiring attention.
 - Compact mode with single-line rows and no secondary status text.
 - Draggable and collapsible overlay with saved position.
+- Per-state local sound alerts for Done, Retry needed, Needs attention and Error.
 
 ### Browser badge
 
@@ -71,6 +72,8 @@ v0.2.x reduces continuous work compared with the prototype:
 
 There are no external network requests and no background polling service.
 
+Sound playback uses an offscreen audio document only while needed. It is created on demand and closes itself after a short idle period.
+
 ## Install for testing
 
 1. Clone or download this repository.
@@ -92,7 +95,8 @@ The popup lets you:
 - disable the short state-change animation;
 - restore all hidden chats;
 - view or clear recent activity;
-- open the same **Support** page used by ChatGPT Completion Sound.
+- open the same **Support** page used by ChatGPT Completion Sound;
+- enable/disable sound alerts, choose a sound per state, adjust volume and test each sound.
 
 Per-chat alias, pinned and hidden preferences are stored locally.
 

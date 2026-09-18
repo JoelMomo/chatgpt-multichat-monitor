@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT MultiChat Monitor",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "A lightweight floating monitor for active ChatGPT conversations across browser tabs.",
-  "permissions": ["storage", "tabs", "scripting"],
+  "permissions": ["storage", "tabs", "scripting", "offscreen"],
   "host_permissions": ["https://chatgpt.com/*"],
   "background": {"service_worker": "background.js"},
   "content_scripts": [{

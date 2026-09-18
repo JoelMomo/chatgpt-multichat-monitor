@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.4
+
+- Added local sound alerts for **Done**, **Retry needed**, **Needs attention** and **Error**.
+- Added the same sound library used by ChatGPT Completion Sound: Pop, Cash Register, Chan, Potion, Point and Page Turn.
+- Added a global sound-alert toggle, per-state sound selectors, volume control and per-state test buttons.
+- `Done` is off by default to avoid overlapping ChatGPT Completion Sound; Retry, Attention and Error use distinct defaults.
+- Hidden chats do not emit sound alerts.
+- Sound playback is event-driven only: no new polling loop was added.
+- The offscreen audio document is created on demand and closes after a short idle period.
+
 ## 0.2.3
 
 - Added the same **Support** button used by ChatGPT Completion Sound.
