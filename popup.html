@@ -33,7 +33,7 @@ button{border:1px solid #354052;background:#18202b;color:var(--text);padding:8px
 .sound-test{min-height:29px;width:34px;padding:0;font-size:12px}
 .volume-row{display:grid;grid-template-columns:82px 1fr;align-items:center;gap:6px;margin-top:10px}.volume-row input{width:100%;accent-color:var(--accent)}
 .sound-note{margin-top:8px;color:var(--muted);font-size:9px}
-.data-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.data-actions button:last-child{grid-column:1/-1}
+.data-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}
 .history{max-height:138px;overflow:auto;border:1px solid #242d39;border-radius:9px}.event{padding:7px 9px;border-bottom:1px solid #242d39}.event:last-child{border-bottom:0}
 .event-top{display:flex;gap:6px;align-items:center}.event-state{font-size:9px;text-transform:uppercase;color:var(--accent);font-weight:800}.event-title{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .event-time{font-size:9px;color:var(--muted)}.empty{padding:11px;color:var(--muted);text-align:center;font-size:10px}
@@ -52,15 +52,6 @@ kbd{padding:1px 4px;border:1px solid #3c4758;border-bottom-width:2px;border-radi
   <div class="row"><div><div class="label">Show idle chats</div><div class="hint">Pinned chats always remain visible.</div></div><label class="switch"><input id="showIdle" type="checkbox"><span class="slider"></span></label></div>
   <div class="row"><div><div class="label">Compact mode</div><div class="hint">Single-line rows and reduced controls.</div></div><label class="switch"><input id="compact" type="checkbox"><span class="slider"></span></label></div>
   <div class="row"><div><div class="label">State animation</div><div class="hint">Working pulse and short state highlights.</div></div><label class="switch"><input id="animations" type="checkbox"><span class="slider"></span></label></div>
-  <div class="row">
-    <div><div class="label">Keep Done visible</div><div class="hint">How long completed chats stay in the monitor.</div></div>
-    <select id="doneVisibility">
-      <option value="30000">30 sec</option>
-      <option value="60000">1 min</option>
-      <option value="180000">3 min</option>
-      <option value="300000">5 min</option>
-    </select>
-  </div>
 </div>
 
 <div class="actions">
@@ -94,6 +85,7 @@ kbd{padding:1px 4px;border:1px solid #3c4758;border-bottom-width:2px;border-radi
       <button id="clearAliases" type="button">Clear aliases</button>
       <button id="clearPins" type="button">Clear pins</button>
       <button id="restoreHiddenData" type="button">Restore hidden chats</button>
+      <button id="resetOrder" type="button">Reset chat order</button>
     </div>
   </div>
 </details>

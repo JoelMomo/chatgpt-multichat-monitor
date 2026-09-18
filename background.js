@@ -1,6 +1,7 @@
 const chats = new Map();
 
 const PREFS_KEY = "monitorChatPrefs";
+const ORDER_KEY = "monitorChatOrder";
 const HISTORY_KEY = "monitorHistory";
 const HISTORY_LIMIT = 100;
 const HISTORY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -32,6 +33,7 @@ const SOUND_KEY_BY_STATE = {
 };
 
 let chatPrefs = {};
+let chatOrder = [];
 let history = [];
 let initPromise = null;
 let lastAudioRequestAt = 0;
@@ -58,11 +60,15 @@ async function ensureInitialized() {
   initPromise = (async () => {
     const stored = await chrome.storage.local.get({
       [PREFS_KEY]: {},
+      [ORDER_KEY]: [],
       [HISTORY_KEY]: []
     });
     chatPrefs = stored[PREFS_KEY] && typeof stored[PREFS_KEY] === "object"
       ? stored[PREFS_KEY]
       : {};
+    chatOrder = Array.isArray(stored[ORDER_KEY])
+      ? [...new Set(stored[ORDER_KEY].filter((key) => typeof key === "string" && key))].slice(0, 200)
+      : [];
     const cutoff = Date.now() - HISTORY_MAX_AGE_MS;
     history = Array.isArray(stored[HISTORY_KEY])
       ? stored[HISTORY_KEY].filter((item) => Number(item.ts) >= cutoff).slice(0, HISTORY_LIMIT)
@@ -102,11 +108,23 @@ function rank(state) {
 }
 
 function snapshot() {
+  const manualIndex = new Map(chatOrder.map((key, index) => [key, index]));
+
   return [...chats.values()]
     .map(decorate)
     .sort((a, b) => {
       const pinOrder = Number(b.pinned) - Number(a.pinned);
       if (pinOrder) return pinOrder;
+
+      const aManual = manualIndex.has(a.chatKey) ? manualIndex.get(a.chatKey) : null;
+      const bManual = manualIndex.has(b.chatKey) ? manualIndex.get(b.chatKey) : null;
+
+      if (aManual !== null && bManual !== null && aManual !== bManual) {
+        return aManual - bManual;
+      }
+      if (aManual !== null && bManual === null) return -1;
+      if (aManual === null && bManual !== null) return 1;
+
       const stateOrder = rank(a.state) - rank(b.state);
       if (stateOrder) return stateOrder;
       if (a.state === "working" && b.state === "working") {
@@ -370,11 +388,34 @@ async function rebuildRegistry() {
   }));
 }
 
+async function acknowledgeFinishedTab(tabId) {
+  await ensureInitialized();
+  const chat = chats.get(tabId);
+  if (!chat || chat.state !== "finished") return false;
+
+  cancelPendingDoneSound(tabId);
+  chats.set(tabId, {
+    ...chat,
+    state: "idle",
+    startedAt: null,
+    finishedAt: null,
+    updatedAt: Date.now()
+  });
+
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: "monitor-acknowledge-done" });
+  } catch {}
+
+  await broadcast();
+  return true;
+}
+
 async function activateTab(tabId) {
   try {
     const tab = await chrome.tabs.get(tabId);
     await chrome.windows.update(tab.windowId, { focused: true });
     await chrome.tabs.update(tabId, { active: true });
+    await acknowledgeFinishedTab(tabId);
     return true;
   } catch {
     return false;
@@ -419,6 +460,30 @@ async function clearChatPreferenceField(field) {
   }
 
   await chrome.storage.local.set({ [PREFS_KEY]: chatPrefs });
+  return true;
+}
+
+async function setChatOrder(keys) {
+  await ensureInitialized();
+  const ordered = [...new Set(
+    (Array.isArray(keys) ? keys : [])
+      .filter((key) => typeof key === "string" && key)
+  )].slice(0, 200);
+
+  const orderedSet = new Set(ordered);
+  chatOrder = [
+    ...ordered,
+    ...chatOrder.filter((key) => !orderedSet.has(key))
+  ].slice(0, 200);
+
+  await chrome.storage.local.set({ [ORDER_KEY]: chatOrder });
+  return true;
+}
+
+async function resetChatOrder() {
+  await ensureInitialized();
+  chatOrder = [];
+  await chrome.storage.local.set({ [ORDER_KEY]: [] });
   return true;
 }
 
@@ -485,9 +550,22 @@ async function injectIntoOpenTabs() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "monitor-state") {
     ensureInitialized()
-      .then(() => {
+      .then(async () => {
         upsertState(message, sender.tab);
-        return broadcast();
+
+        if (message.state === "finished" &&
+            sender.tab?.active &&
+            Number.isInteger(sender.tab?.windowId)) {
+          try {
+            const windowInfo = await chrome.windows.get(sender.tab.windowId);
+            if (windowInfo.focused) {
+              const acknowledged = await acknowledgeFinishedTab(sender.tab.id);
+              if (acknowledged) return;
+            }
+          } catch {}
+        }
+
+        await broadcast();
       })
       .then(() => sendResponse({ ok: true }))
       .catch(() => sendResponse({ ok: false }));
@@ -524,6 +602,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === "monitor-clear-chat-pref-field") {
     clearChatPreferenceField(String(message.field || ""))
+      .then((ok) => broadcast().then(() => sendResponse({ ok })))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-set-chat-order") {
+    setChatOrder(message.chatKeys)
+      .then((ok) => broadcast().then(() => sendResponse({ ok })))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-reset-chat-order") {
+    resetChatOrder()
       .then((ok) => broadcast().then(() => sendResponse({ ok })))
       .catch(() => sendResponse({ ok: false }));
     return true;
@@ -574,6 +666,23 @@ chrome.commands.onCommand.addListener((command) => {
   }
 });
 
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  acknowledgeFinishedTab(activeInfo.tabId).catch(() => {});
+});
+
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) return;
+  chrome.tabs.query({ active: true, windowId })
+    .then((tabs) => {
+      const tab = tabs[0];
+      if (tab && Number.isInteger(tab.id)) {
+        return acknowledgeFinishedTab(tab.id);
+      }
+      return false;
+    })
+    .catch(() => {});
+});
+
 chrome.tabs.onRemoved.addListener((tabId) => {
   cancelPendingDoneSound(tabId);
   if (!chats.delete(tabId)) return;
@@ -619,6 +728,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 });
 
 chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.local.remove("monitorDoneVisibilityMs").catch(() => {});
   injectIntoOpenTabs().catch(() => {});
 });
 

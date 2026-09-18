@@ -4,7 +4,6 @@
 
   const FINISH_CONFIRM_MS = 1400;
   const RECENT_TTL_MS = 180000;
-  const DEFAULT_DONE_VISIBILITY_MS = 180000;
   const ATTENTION_TTL_MS = 30 * 60 * 1000;
   const ERROR_TTL_MS = 10 * 60 * 1000;
   const FALLBACK_SCAN_MS = 5000;
@@ -18,7 +17,6 @@
     monitorCollapsed: false,
     monitorCompact: false,
     monitorAnimations: true,
-    monitorDoneVisibilityMs: DEFAULT_DONE_VISIBILITY_MS,
     monitorPosition: null
   };
 
@@ -50,6 +48,9 @@
   let dragging = null;
   let openMenuTabId = null;
   let floatingMenu = null;
+  let draggedChatKey = null;
+  let draggedPinned = null;
+  let dropTarget = null;
 
   const rowNodes = new Map();
   const renderedStates = new Map();
@@ -171,17 +172,9 @@
     resetTimer = null;
   }
 
-  function doneVisibilityMs() {
-    const value = Number(settings.monitorDoneVisibilityMs);
-    return [30000, 60000, 180000, 300000].includes(value)
-      ? value
-      : DEFAULT_DONE_VISIBILITY_MS;
-  }
-
   function resetDelayFor(state) {
     if (state === "retry" || state === "attention") return ATTENTION_TTL_MS;
     if (state === "error") return ERROR_TTL_MS;
-    if (state === "finished") return doneVisibilityMs();
     if (state === "interrupted") return RECENT_TTL_MS;
     return 0;
   }
@@ -374,9 +367,7 @@
     if (chat.hidden) return false;
     if (chat.pinned) return true;
     if (chat.state === "working" || chat.state === "retry" || chat.state === "attention" || chat.state === "error") return true;
-    if (chat.state === "finished") {
-      return now - (chat.finishedAt || chat.updatedAt || 0) < doneVisibilityMs();
-    }
+    if (chat.state === "finished") return true;
     if (chat.state === "interrupted") {
       return now - (chat.finishedAt || chat.updatedAt || 0) < RECENT_TTL_MS;
     }
@@ -406,6 +397,59 @@
     });
   }
 
+  function visibleGroupFor(chat) {
+    const now = Date.now();
+    return chats.filter((item) =>
+      !item.hidden &&
+      item.pinned === chat.pinned &&
+      isRecent(item, now)
+    );
+  }
+
+  function persistGroupOrder(group) {
+    return sendMessage({
+      type: "monitor-set-chat-order",
+      chatKeys: group.map((item) => item.chatKey)
+    });
+  }
+
+  function moveChat(chat, direction) {
+    const group = visibleGroupFor(chat);
+    const index = group.findIndex((item) => item.chatKey === chat.chatKey);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= group.length) return Promise.resolve(null);
+
+    const reordered = [...group];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(nextIndex, 0, moved);
+    return persistGroupOrder(reordered);
+  }
+
+  function clearDropMarkers() {
+    dropTarget = null;
+    for (const node of rowNodes.values()) {
+      node.row.classList.remove("drop-before", "drop-after", "drag-source");
+    }
+  }
+
+  function reorderDraggedChat(targetChat, before) {
+    const draggedChat = chats.find((item) => item.chatKey === draggedChatKey);
+    if (!draggedChat || !targetChat || draggedChat.pinned !== targetChat.pinned) return Promise.resolve(null);
+
+    const group = visibleGroupFor(draggedChat);
+    const draggedIndex = group.findIndex((item) => item.chatKey === draggedChat.chatKey);
+    if (draggedIndex < 0) return Promise.resolve(null);
+
+    const reordered = [...group];
+    const [moved] = reordered.splice(draggedIndex, 1);
+    let targetIndex = reordered.findIndex((item) => item.chatKey === targetChat.chatKey);
+    if (targetIndex < 0) return Promise.resolve(null);
+    if (!before) targetIndex += 1;
+    reordered.splice(targetIndex, 0, moved);
+
+    return persistGroupOrder(reordered);
+  }
+
   function closeMenus() {
     openMenuTabId = null;
     if (floatingMenu) floatingMenu.hidden = true;
@@ -427,6 +471,13 @@
     const row = document.createElement("div");
     row.className = "chat-row";
     row.dataset.tabId = String(tabId);
+
+    const handle = document.createElement("span");
+    handle.className = "drag-handle";
+    handle.textContent = "⋮⋮";
+    handle.draggable = true;
+    handle.title = "Drag to reorder";
+    handle.setAttribute("aria-label", "Drag to reorder");
 
     const main = document.createElement("button");
     main.type = "button";
@@ -453,10 +504,11 @@
     more.textContent = "...";
     more.title = "Chat options";
 
-    row.append(main, more);
+    row.append(handle, main, more);
 
     const node = {
       row,
+      handle,
       main,
       dot,
       title,
@@ -464,6 +516,29 @@
       more,
       chat: null
     };
+
+    handle.addEventListener("dragstart", (event) => {
+      if (!node.chat) {
+        event.preventDefault();
+        return;
+      }
+
+      draggedChatKey = node.chat.chatKey;
+      draggedPinned = node.chat.pinned;
+      row.classList.add("drag-source");
+      closeMenus();
+
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", draggedChatKey);
+      }
+    });
+
+    handle.addEventListener("dragend", () => {
+      draggedChatKey = null;
+      draggedPinned = null;
+      clearDropMarkers();
+    });
 
     main.addEventListener("click", () => activateChat(tabId));
     main.addEventListener("contextmenu", (event) => {
@@ -512,6 +587,12 @@
     }
 
     floatingMenu.append(
+      createMenuButton("Move up", () => {
+        moveChat(chat, -1).then(closeMenus);
+      }),
+      createMenuButton("Move down", () => {
+        moveChat(chat, 1).then(closeMenus);
+      }),
       createMenuButton("Hide", () => {
         setChatPreference(chat.chatKey, { hidden: true }).then(closeMenus);
       })
@@ -715,7 +796,12 @@
       "font-size:18px;line-height:1;cursor:pointer}.collapse:hover{background:#202731;color:white}" +
       ".list{max-height:min(360px,58vh);overflow:auto;padding:7px}" +
       ".chat-row{position:relative;display:flex;align-items:center;gap:3px;border-radius:10px;background:transparent}" +
-      ".chat-row:hover,.chat-row.current{background:#1a202a}.chat-main{min-width:0;flex:1;display:flex;align-items:center;" +
+      ".chat-row:hover,.chat-row.current{background:#1a202a}.chat-row.drag-source{opacity:.42}" +
+      ".chat-row.drop-before::before,.chat-row.drop-after::after{content:'';position:absolute;left:7px;right:7px;height:2px;border-radius:999px;background:#63e6d7}" +
+      ".chat-row.drop-before::before{top:-1px}.chat-row.drop-after::after{bottom:-1px}" +
+      ".drag-handle{width:17px;align-self:stretch;display:grid;place-items:center;color:#526071;font:700 11px/1 system-ui;cursor:grab;user-select:none;opacity:.42}" +
+      ".chat-row:hover .drag-handle{opacity:.9;color:#8e9bad}.drag-handle:active{cursor:grabbing}" +
+      ".chat-main{min-width:0;flex:1;display:flex;align-items:center;" +
       "gap:10px;border:0;border-radius:10px;padding:9px 7px 9px 10px;background:transparent;color:inherit;text-align:left;cursor:pointer}" +
       ".more{width:27px;height:27px;margin-right:5px;border:0;border-radius:7px;background:transparent;color:#7f8b9b;" +
       "font-weight:800;cursor:pointer}.more:hover{background:#28303b;color:white}" +
@@ -739,7 +825,8 @@
       ".collapsed .head{border-bottom:0}#panel.compact{width:214px}#panel.compact.collapsed{width:174px}" +
       ".compact .head{height:36px;padding:0 6px 0 9px}.compact .brand{font-size:0}.compact .brand::after{content:'Monitor';font-size:11px}" +
       ".compact .summary,.compact .meta,.compact .foot{display:none}" +
-      ".compact .list{padding:3px}.compact .chat-main{padding:5px 4px 5px 7px;gap:7px}" +
+      ".compact .list{padding:3px}.compact .chat-main{padding:5px 4px 5px 3px;gap:7px}" +
+      ".compact .drag-handle{width:12px;font-size:9px;opacity:.2}.compact .chat-row:hover .drag-handle{opacity:.8}" +
       ".compact .more{width:22px;height:22px;margin-right:2px;opacity:.18;transition:opacity .12s}.compact .chat-row:hover .more,.compact .more:focus-visible{opacity:1}" +
       ".compact .dot{width:8px;height:8px}" +
       ".flash{animation:stateflash 1.2s ease-out 1}.no-animations .state-working .dot,.no-animations .flash{animation:none}" +
@@ -777,7 +864,7 @@
 
     const foot = document.createElement("div");
     foot.className = "foot";
-    foot.textContent = "Click a chat to switch tabs";
+    foot.textContent = "Click to switch · drag ⋮⋮ to reorder";
 
     panel.append(header, list, empty, foot);
 
@@ -803,6 +890,55 @@
     });
 
     setupDrag();
+
+    list.addEventListener("dragover", (event) => {
+      if (!draggedChatKey) return;
+      const targetRow = event.target instanceof Element
+        ? event.target.closest(".chat-row")
+        : null;
+      if (!targetRow) return;
+
+      const targetNode = rowNodes.get(Number(targetRow.dataset.tabId));
+      if (!targetNode?.chat ||
+          targetNode.chat.chatKey === draggedChatKey ||
+          targetNode.chat.pinned !== draggedPinned) {
+        clearDropMarkers();
+        return;
+      }
+
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+
+      for (const node of rowNodes.values()) {
+        node.row.classList.remove("drop-before", "drop-after");
+      }
+
+      const rect = targetRow.getBoundingClientRect();
+      const before = event.clientY < rect.top + rect.height / 2;
+      targetRow.classList.add(before ? "drop-before" : "drop-after");
+      dropTarget = {
+        chat: targetNode.chat,
+        before
+      };
+    });
+
+    list.addEventListener("drop", (event) => {
+      if (!draggedChatKey || !dropTarget) return;
+      event.preventDefault();
+      const target = dropTarget;
+      reorderDraggedChat(target.chat, target.before).finally(() => {
+        draggedChatKey = null;
+        draggedPinned = null;
+        clearDropMarkers();
+      });
+    });
+
+    list.addEventListener("dragleave", (event) => {
+      if (!event.relatedTarget || !list.contains(event.relatedTarget)) {
+        clearDropMarkers();
+      }
+    });
+
     list.addEventListener("scroll", closeMenus, { passive: true });
     document.addEventListener("pointerdown", (event) => {
       if (event.target !== host) closeMenus();
@@ -859,6 +995,14 @@
       return true;
     }
 
+    if (message?.type === "monitor-acknowledge-done") {
+      if (localState.state === "finished") {
+        setState("idle");
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
+
     if (message?.type === "monitor-toggle-overlay") {
       settings.monitorEnabled = !settings.monitorEnabled;
       chrome.storage.local.set({
@@ -877,10 +1021,6 @@
 
     if (changes.monitorPosition) {
       applyPosition(settings.monitorPosition);
-    }
-
-    if (changes.monitorDoneVisibilityMs && localState.state === "finished") {
-      scheduleResetForCurrentState();
     }
 
     render();

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.7
+
+- Added persistent manual chat ordering by dragging rows with the reorder handle.
+- Manual order is saved locally and reused across tabs, reloads and browser sessions.
+- Pinned chats remain in the top group; manual ordering applies within pinned/unpinned groups.
+- Added **Move up** and **Move down** to the chat menu as a non-drag alternative.
+- Added **Reset chat order** in Chat data to return to automatic smart sorting.
+- Changed **Done** from a timed state to an unread-style state: it stays green until the user visits that chat.
+- Visiting a Done chat through the monitor, browser tab switching or window focus acknowledges it and returns it to Idle.
+- If a chat is already active in the focused window when it finishes, it is considered seen immediately instead of remaining green.
+- Removed the old configurable Done visibility timer.
+
 ## 0.2.6
 
 - Reorganized the popup into compact collapsible sections for Sound alerts, Chat data, Recent activity and Shortcuts.

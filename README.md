@@ -2,7 +2,7 @@
 
 A lightweight Chrome/Edge extension that adds a floating monitor to ChatGPT and shows what your other ChatGPT tabs are doing.
 
-## v0.2.6
+## v0.2.7
 
 The monitor is designed to stay open all day without continuously scanning conversation content.
 
@@ -20,18 +20,18 @@ The monitor is designed to stay open all day without continuously scanning conve
 
 - Shared status across all open `chatgpt.com` tabs.
 - Live elapsed time for working chats.
-- Recently finished/stopped chats remain visible briefly.
+- Finished chats stay marked as **Done** until you visit them; stopped chats still expire after a short period.
 - Click a row to focus the correct tab and browser window.
 - Pin important chats.
 - Hide chats you do not want to monitor.
 - Give chats local aliases without changing their real ChatGPT title.
 - Right-click a row or use its **...** menu for chat options.
-- Smart ordering prioritizes pinned chats and states requiring attention.
+- Smart ordering prioritizes pinned chats and states requiring attention until you create a manual order.
+- Drag chats by the reorder handle to persist a custom order; pinned chats remain in the top group.
 - Compact mode with narrower single-line rows, reduced header text and low-profile chat-option buttons.
 - Draggable and collapsible overlay with saved position.
 - Per-state local sound alerts for Done, Retry needed, Needs attention and Error.
 - Done uses **Pop** by default; it can still be set to Off if Completion Sound already handles completions.
-- Configurable Done visibility: 30 seconds, 1 minute, 3 minutes or 5 minutes.
 - State LEDs expose their state name as a hover tooltip, with Retry and Needs attention using more distinct yellow/orange indicators.
 
 ### Browser badge
@@ -99,7 +99,7 @@ The popup lets you:
 - reset the floating monitor position;
 - restore all hidden chats;
 - clear all local aliases or pins independently;
-- choose how long Done chats remain visible;
+- reset the custom chat order back to automatic sorting;
 - view or clear recent activity;
 - open the same **Support** page used by ChatGPT Completion Sound;
 - enable/disable sound alerts, choose a sound per state, adjust volume and test each sound.

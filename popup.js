@@ -3,7 +3,6 @@ const DEFAULTS = {
   monitorShowIdle: false,
   monitorCompact: false,
   monitorAnimations: true,
-  monitorDoneVisibilityMs: 180000,
   monitorSoundsEnabled: true,
   monitorSoundDone: "pop",
   monitorSoundRetry: "potion",
@@ -16,13 +15,13 @@ const enabled = document.getElementById("enabled");
 const showIdle = document.getElementById("showIdle");
 const compact = document.getElementById("compact");
 const animations = document.getElementById("animations");
-const doneVisibility = document.getElementById("doneVisibility");
 
 const resetPosition = document.getElementById("resetPosition");
 const restoreHidden = document.getElementById("restoreHidden");
 const restoreHiddenData = document.getElementById("restoreHiddenData");
 const clearAliases = document.getElementById("clearAliases");
 const clearPins = document.getElementById("clearPins");
+const resetOrder = document.getElementById("resetOrder");
 const clearHistory = document.getElementById("clearHistory");
 const historyRoot = document.getElementById("history");
 const historySummary = document.getElementById("historySummary");
@@ -158,7 +157,6 @@ async function load() {
   showIdle.checked = settings.monitorShowIdle === true;
   compact.checked = settings.monitorCompact === true;
   animations.checked = settings.monitorAnimations !== false;
-  doneVisibility.value = String(settings.monitorDoneVisibilityMs ?? DEFAULTS.monitorDoneVisibilityMs);
 
   soundsEnabled.checked = settings.monitorSoundsEnabled !== false;
   soundDone.value = settings.monitorSoundDone || DEFAULTS.monitorSoundDone;
@@ -187,12 +185,6 @@ animations.addEventListener("change", () => {
   chrome.storage.local.set({ monitorAnimations: animations.checked });
 });
 
-doneVisibility.addEventListener("change", () => {
-  chrome.storage.local.set({
-    monitorDoneVisibilityMs: Number(doneVisibility.value)
-  });
-});
-
 resetPosition.addEventListener("click", async () => {
   await chrome.storage.local.set({ monitorPosition: null });
   showButtonResult(resetPosition, "Reset", "Reset position");
@@ -207,6 +199,13 @@ clearAliases.addEventListener("click", () => {
 
 clearPins.addEventListener("click", () => {
   clearPreferenceField("pinned", clearPins, "Cleared", "Clear pins");
+});
+
+resetOrder.addEventListener("click", async () => {
+  const response = await chrome.runtime.sendMessage({
+    type: "monitor-reset-chat-order"
+  }).catch(() => null);
+  showButtonResult(resetOrder, response?.ok ? "Reset" : "Failed", "Reset chat order");
 });
 
 soundsEnabled.addEventListener("change", () => {
