@@ -47,6 +47,7 @@
   let collapseButton = null;
   let dragging = null;
   let openMenuTabId = null;
+  let floatingMenu = null;
 
   const rowNodes = new Map();
   const renderedStates = new Map();
@@ -322,9 +323,7 @@
 
   function closeMenus() {
     openMenuTabId = null;
-    for (const node of rowNodes.values()) {
-      node.menu.hidden = true;
-    }
+    if (floatingMenu) floatingMenu.hidden = true;
   }
 
   function createMenuButton(label, action) {
@@ -369,11 +368,17 @@
     more.textContent = "...";
     more.title = "Chat options";
 
-    const menu = document.createElement("div");
-    menu.className = "chat-menu";
-    menu.hidden = true;
+    row.append(main, more);
 
-    row.append(main, more, menu);
+    const node = {
+      row,
+      main,
+      dot,
+      title,
+      meta,
+      more,
+      chat: null
+    };
 
     main.addEventListener("click", () => activateChat(tabId));
     main.addEventListener("contextmenu", (event) => {
@@ -385,31 +390,21 @@
       event.stopPropagation();
       const willOpen = openMenuTabId !== tabId;
       closeMenus();
-      if (willOpen) {
+      if (willOpen && node.chat) {
         openMenuTabId = tabId;
-        menu.hidden = false;
+        openFloatingMenu(more, node.chat);
       }
     });
-
-    const node = {
-      row,
-      main,
-      dot,
-      title,
-      meta,
-      more,
-      menu,
-      chat: null
-    };
 
     rowNodes.set(tabId, node);
     return node;
   }
 
-  function rebuildMenu(node, chat) {
-    node.menu.replaceChildren();
+  function rebuildFloatingMenu(chat) {
+    if (!floatingMenu) return;
+    floatingMenu.replaceChildren();
 
-    node.menu.append(
+    floatingMenu.append(
       createMenuButton(chat.alias ? "Rename alias" : "Set alias", () => {
         const result = window.prompt(
           "Name shown only in ChatGPT Monitor:",
@@ -424,18 +419,43 @@
     );
 
     if (chat.alias) {
-      node.menu.append(
+      floatingMenu.append(
         createMenuButton("Clear alias", () => {
           setChatPreference(chat.chatKey, { alias: "" }).then(closeMenus);
         })
       );
     }
 
-    node.menu.append(
+    floatingMenu.append(
       createMenuButton("Hide", () => {
         setChatPreference(chat.chatKey, { hidden: true }).then(closeMenus);
       })
     );
+  }
+
+  function openFloatingMenu(anchor, chat) {
+    if (!floatingMenu) return;
+    rebuildFloatingMenu(chat);
+    floatingMenu.hidden = false;
+    floatingMenu.style.visibility = "hidden";
+
+    const anchorRect = anchor.getBoundingClientRect();
+    const menuRect = floatingMenu.getBoundingClientRect();
+    let left = anchorRect.right - menuRect.width;
+    let top = anchorRect.bottom + 5;
+
+    if (left < 8) left = 8;
+    if (left + menuRect.width > window.innerWidth - 8) {
+      left = window.innerWidth - menuRect.width - 8;
+    }
+    if (top + menuRect.height > window.innerHeight - 8) {
+      top = anchorRect.top - menuRect.height - 5;
+    }
+    if (top < 8) top = 8;
+
+    floatingMenu.style.left = Math.round(left) + "px";
+    floatingMenu.style.top = Math.round(top) + "px";
+    floatingMenu.style.visibility = "visible";
   }
 
   function updateHeaderSummary(visible) {
@@ -469,6 +489,7 @@
 
     panel.classList.toggle("collapsed", settings.monitorCollapsed === true);
     panel.classList.toggle("compact", settings.monitorCompact === true);
+    panel.classList.toggle("no-animations", settings.monitorAnimations === false);
     collapseButton.textContent = settings.monitorCollapsed ? "+" : "-";
     collapseButton.title = settings.monitorCollapsed ? "Expand monitor" : "Collapse monitor";
 
@@ -493,14 +514,13 @@
       if (chat.url === location.href) node.row.classList.add("current");
       if (chat.pinned) node.row.classList.add("pinned");
 
-      node.title.textContent = (chat.pinned ? "* " : "") + (chat.displayTitle || chat.title || "ChatGPT");
+      node.title.textContent = (chat.pinned ? "📌 " : "") + (chat.displayTitle || chat.title || "ChatGPT");
       node.meta.textContent = statusText(chat, now);
       node.main.setAttribute(
         "aria-label",
         (chat.displayTitle || chat.title || "ChatGPT") + ", " + node.meta.textContent
       );
 
-      rebuildMenu(node, chat);
       maybeFlash(node, chat);
       list.appendChild(node.row);
     }
@@ -613,14 +633,14 @@
       ".more{width:27px;height:27px;margin-right:5px;border:0;border-radius:7px;background:transparent;color:#7f8b9b;" +
       "font-weight:800;cursor:pointer}.more:hover{background:#28303b;color:white}" +
       ".dot{width:9px;height:9px;border-radius:50%;background:#687386;flex:0 0 auto}" +
-      ".state-working .dot{background:#63e6d7;box-shadow:0 0 0 3px rgba(99,230,215,.09)}" +
+      ".state-working .dot{background:#63e6d7;box-shadow:0 0 0 3px rgba(99,230,215,.09);animation:workingpulse 1.35s ease-in-out infinite}" +
       ".state-finished .dot{background:#72d99b}.state-interrupted .dot{background:#f2bd68}" +
       ".state-attention .dot{background:#f7a85b}.state-error .dot{background:#ee7070}" +
       ".copy{min-width:0;display:flex;flex-direction:column;gap:1px;flex:1}" +
       ".chat-title{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}" +
       ".meta{color:#8e9bad;font-size:11px}.pinned .chat-title{color:#fff}" +
-      ".chat-menu{position:absolute;z-index:4;right:7px;top:35px;width:132px;padding:5px;border:1px solid #384250;" +
-      "border-radius:9px;background:#171d26;box-shadow:0 10px 26px rgba(0,0,0,.4)}" +
+      ".floating-menu{position:fixed;z-index:2147483647;width:144px;padding:5px;border:1px solid #384250;" +
+      "border-radius:9px;background:#171d26;box-shadow:0 10px 26px rgba(0,0,0,.4);pointer-events:auto}" +
       ".menu-action{display:block;width:100%;border:0;border-radius:6px;padding:7px 8px;background:transparent;" +
       "color:#d9e0e8;text-align:left;font:12px system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}" +
       ".menu-action:hover{background:#252d38}" +
@@ -629,7 +649,9 @@
       "#panel.collapsed{width:215px}.collapsed .list,.collapsed .empty,.collapsed .foot,.collapsed .summary{display:none}" +
       ".collapsed .head{border-bottom:0}.compact{width:255px}.compact .chat-main{padding-top:6px;padding-bottom:6px}" +
       ".compact .meta{font-size:10px}.compact .foot{display:none}" +
-      ".flash{animation:stateflash 1.2s ease-out 1}@keyframes stateflash{0%{background:#2b3440}100%{background:transparent}}";
+      ".flash{animation:stateflash 1.2s ease-out 1}.no-animations .state-working .dot,.no-animations .flash{animation:none}" +
+      "@keyframes workingpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.52;transform:scale(.82)}}" +
+      "@keyframes stateflash{0%{background:#2b3440}100%{background:transparent}}";
 
     panel = document.createElement("section");
     panel.id = "panel";
@@ -665,7 +687,12 @@
     foot.textContent = "Click a chat to switch tabs";
 
     panel.append(header, list, empty, foot);
-    shadow.append(style, panel);
+
+    floatingMenu = document.createElement("div");
+    floatingMenu.className = "floating-menu";
+    floatingMenu.hidden = true;
+
+    shadow.append(style, panel, floatingMenu);
     document.documentElement.appendChild(host);
 
     collapseButton.addEventListener("click", () => {
@@ -677,12 +704,16 @@
     });
 
     shadow.addEventListener("click", (event) => {
-      if (!event.target.closest(".more") && !event.target.closest(".chat-menu")) {
+      if (!event.target.closest(".more") && !event.target.closest(".floating-menu")) {
         closeMenus();
       }
     });
 
     setupDrag();
+    list.addEventListener("scroll", closeMenus, { passive: true });
+    document.addEventListener("pointerdown", (event) => {
+      if (event.target !== host) closeMenus();
+    }, true);
     applyPosition(settings.monitorPosition);
     render();
   }
@@ -770,6 +801,7 @@
   });
 
   window.addEventListener("resize", () => {
+    closeMenus();
     if (!panel) return;
     const rect = panel.getBoundingClientRect();
     applyPosition({ x: rect.left, y: rect.top });

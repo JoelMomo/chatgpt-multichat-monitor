@@ -19,11 +19,8 @@ function cleanTitle(title) {
 function chatKeyFromUrl(url, tabId) {
   try {
     const parsed = new URL(url || "");
-    const match = parsed.pathname.match(/^\/(?:c|g)\/([^/?#]+)/);
-    if (match) return "conversation:" + match[1];
-    if (parsed.pathname && parsed.pathname !== "/") {
-      return "path:" + parsed.pathname.replace(/\/+$/, "");
-    }
+    const conversation = parsed.pathname.match(/\/c\/([^/?#]+)/);
+    if (conversation) return "conversation:" + conversation[1];
   } catch {}
   return "tab:" + String(tabId ?? "unknown");
 }

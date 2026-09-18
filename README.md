@@ -2,7 +2,7 @@
 
 A lightweight Chrome/Edge extension that adds a floating monitor to ChatGPT and shows what your other ChatGPT tabs are doing.
 
-## v0.2.0
+## v0.2.1
 
 The monitor is designed to stay open all day without continuously scanning conversation content.
 
@@ -38,7 +38,7 @@ The extension icon stays quiet when nothing needs attention.
 
 ### Keyboard shortcuts
 
-- `Ctrl+Shift+M` - show/hide the monitor on the active ChatGPT tab.
+- `Alt+Shift+M` - show/hide the monitor on the active ChatGPT tab.
 - `Ctrl+Shift+1` - focus the next working chat.
 - `Ctrl+Shift+2` - focus the next attention/recent chat.
 
@@ -55,7 +55,7 @@ The popup keeps a small local history of state changes:
 
 ## Lightweight design
 
-v0.2.0 reduces continuous work compared with the prototype:
+v0.2.x reduces continuous work compared with the prototype:
 
 - `MutationObserver` reacts to relevant DOM changes.
 - Observer-triggered checks are throttled.
@@ -64,7 +64,7 @@ v0.2.0 reduces continuous work compared with the prototype:
 - Error detection inspects only visible alert/error elements.
 - The "Needs attention" heuristic reads only the tail of the latest assistant response once when generation finishes.
 - Live timer text is updated only in visible browser tabs.
-- The old continuous pulsing animation was removed.
+- The Working indicator uses a small opacity/transform pulse and can be disabled from the popup.
 - State-change animation is one short optional highlight.
 - Rows are updated in place instead of rebuilding the full overlay.
 

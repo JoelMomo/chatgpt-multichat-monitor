@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1
+
+- Fixed aliases, pin and hide preferences colliding between different conversations inside the same GPT.
+- Changed the pinned marker from `*` to `📌`.
+- Moved chat options to a viewport-level floating menu so it does not expand or get clipped by the monitor list.
+- Changed the default monitor shortcut from `Ctrl+Shift+M` to `Alt+Shift+M` to avoid ChatGPT's own shortcut.
+- Restored the continuous lightweight Working pulse when animations are enabled.
+
 ## 0.2.0
 
 - Added **Needs attention** and **Error** states.
