@@ -43,7 +43,7 @@
   <sub><strong>214 px compact view</strong> — the same information in single-line rows.</sub>
 </p>
 
-### Persistent drag order
+### Persistent chat order
 
 <p align="center">
   <img src="assets/screenshots/drag-order.png" width="410" alt="Chat order drag and drop">
@@ -61,6 +61,32 @@
 
 <p align="center">
   <sub>Sound alerts, compact mode, local chat data, recent activity and shortcuts.</sub>
+</p>
+
+## Live demos
+
+<p align="center">
+  <sub>Captured from the real extension UI using demo chat names and states.</sub>
+</p>
+
+### Floating and draggable
+
+<p align="center">
+  <img src="assets/demos/monitor-drag.gif" width="700" alt="ChatGPT MultiChat Monitor panel being dragged across the screen">
+</p>
+
+<p align="center">
+  <sub>Drag the header to place the monitor anywhere on screen. Its position is saved locally.</sub>
+</p>
+
+### Working → Done
+
+<p align="center">
+  <img src="assets/demos/working-done.gif" width="430" alt="ChatGPT MultiChat Monitor Working state changing to Done">
+</p>
+
+<p align="center">
+  <sub>The cyan <strong>Working</strong> LED pulses while ChatGPT is generating, then switches to green <strong>Done</strong>.</sub>
 </p>
 
 ## What it does

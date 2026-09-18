@@ -4,6 +4,8 @@
 
 - Added the final MultiChat Monitor icon set and wired it into the extension manifest/action.
 - Added presentation assets: normal monitor, compact monitor, drag-order and popup screenshots.
+- Re-captured the monitor screenshots with transparent surroundings so no ChatGPT page elements leak into the image and the panel's rounded corners remain visible.
+- Added two real-UI GIF demos: moving the floating panel across the screen and the pulsing Working LED transitioning to unread Done.
 - Added a matching 1280×640 social preview asset.
 - Reworked the README into a visual project landing page with screenshots, feature highlights and a state/color legend.
 - Refined the README preview layout to avoid oversized GitHub table cells and added the same release/apps and support badges used across the other public projects.
