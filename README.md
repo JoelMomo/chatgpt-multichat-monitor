@@ -2,7 +2,7 @@
 
 A lightweight Chrome/Edge extension that adds a floating monitor to ChatGPT and shows what your other ChatGPT tabs are doing.
 
-## v0.2.4
+## v0.2.5
 
 The monitor is designed to stay open all day without continuously scanning conversation content.
 
@@ -30,6 +30,7 @@ The monitor is designed to stay open all day without continuously scanning conve
 - Compact mode with single-line rows and no secondary status text.
 - Draggable and collapsible overlay with saved position.
 - Per-state local sound alerts for Done, Retry needed, Needs attention and Error.
+- Done uses **Pop** by default; it can still be set to Off if Completion Sound already handles completions.
 
 ### Browser badge
 
@@ -72,7 +73,7 @@ v0.2.x reduces continuous work compared with the prototype:
 
 There are no external network requests and no background polling service.
 
-Sound playback uses an offscreen audio document only while needed. It is created on demand and closes itself after a short idle period.
+Sound playback uses an offscreen audio document only while needed. It is created on demand and closes itself after a short idle period. A short stabilization delay is applied only to Done sounds so a late Retry/Error state can cancel the completion sound instead of producing two alerts.
 
 ## Install for testing
 

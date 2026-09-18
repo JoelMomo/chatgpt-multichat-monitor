@@ -4,7 +4,7 @@ const DEFAULTS = {
   monitorCompact: false,
   monitorAnimations: true,
   monitorSoundsEnabled: true,
-  monitorSoundDone: "off",
+  monitorSoundDone: "pop",
   monitorSoundRetry: "potion",
   monitorSoundAttention: "point",
   monitorSoundError: "chan",

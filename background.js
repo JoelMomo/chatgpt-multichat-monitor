@@ -7,7 +7,7 @@ const HISTORY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 const SOUND_DEFAULTS = {
   monitorSoundsEnabled: true,
-  monitorSoundDone: "off",
+  monitorSoundDone: "pop",
   monitorSoundRetry: "potion",
   monitorSoundAttention: "point",
   monitorSoundError: "chan",
@@ -35,6 +35,7 @@ let chatPrefs = {};
 let history = [];
 let initPromise = null;
 let lastAudioRequestAt = 0;
+const pendingDoneSoundTimers = new Map();
 
 function cleanTitle(title) {
   const value = String(title || "")
@@ -187,6 +188,13 @@ async function playSound(sound, volume) {
   return true;
 }
 
+function cancelPendingDoneSound(tabId) {
+  const timer = pendingDoneSoundTimers.get(tabId);
+  if (!timer) return;
+  clearTimeout(timer);
+  pendingDoneSoundTimers.delete(tabId);
+}
+
 async function maybePlayStateSound(chat) {
   if (!chat || prefsFor(chat.chatKey).hidden) return;
   const key = SOUND_KEY_BY_STATE[chat.state];
@@ -195,6 +203,26 @@ async function maybePlayStateSound(chat) {
   const settings = await getSoundSettings();
   if (!settings.monitorSoundsEnabled) return;
   await playSound(settings[key], settings.monitorSoundVolume);
+}
+
+function queueStateSound(chat) {
+  if (!chat || !Number.isInteger(chat.tabId)) return;
+
+  cancelPendingDoneSound(chat.tabId);
+
+  if (chat.state !== "finished") {
+    maybePlayStateSound(chat).catch(() => {});
+    return;
+  }
+
+  const timer = setTimeout(() => {
+    pendingDoneSoundTimers.delete(chat.tabId);
+    const current = chats.get(chat.tabId);
+    if (!current || current.state !== "finished") return;
+    maybePlayStateSound(current).catch(() => {});
+  }, 1200);
+
+  pendingDoneSoundTimers.set(chat.tabId, timer);
 }
 
 async function closeOffscreenIfIdle() {
@@ -280,7 +308,7 @@ function upsertState(payload, tab) {
   if (hadPrevious) {
     recordHistory(next, previous.state);
     if (previous.state !== next.state) {
-      maybePlayStateSound(next).catch(() => {});
+      queueStateSound(next);
     }
   }
 }
@@ -317,11 +345,20 @@ async function rebuildRegistry() {
 
   const openIds = new Set(tabs.filter((tab) => Number.isInteger(tab.id)).map((tab) => tab.id));
   for (const tabId of chats.keys()) {
-    if (!openIds.has(tabId)) chats.delete(tabId);
+    if (!openIds.has(tabId)) {
+      cancelPendingDoneSound(tabId);
+      chats.delete(tabId);
+    }
   }
 
   await Promise.allSettled(tabs.map(async (tab) => {
     if (!Number.isInteger(tab.id)) return;
+
+    if (tab.discarded) {
+      upsertState({ state: "idle", title: tab.title, url: tab.url }, tab);
+      return;
+    }
+
     try {
       const local = await chrome.tabs.sendMessage(tab.id, { type: "monitor-get-local-state" });
       if (local) upsertState(local, tab);
@@ -525,18 +562,37 @@ chrome.commands.onCommand.addListener((command) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  cancelPendingDoneSound(tabId);
   if (!chats.delete(tabId)) return;
   broadcast().catch(() => {});
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (!changeInfo.url && !changeInfo.title) return;
+  const isLoading = changeInfo.status === "loading";
+  const discardedNow = changeInfo.discarded === true;
+
+  if (!changeInfo.url && !changeInfo.title && !isLoading && changeInfo.discarded === undefined) {
+    return;
+  }
+
   if (changeInfo.url && !changeInfo.url.startsWith("https://chatgpt.com/")) {
+    cancelPendingDoneSound(tabId);
     if (chats.delete(tabId)) broadcast().catch(() => {});
     return;
   }
+
   const previous = chats.get(tabId);
   if (!previous) return;
+
+  if (discardedNow || isLoading) {
+    upsertState({
+      state: "idle",
+      title: changeInfo.title || tab.title || previous.title,
+      url: changeInfo.url || tab.url || previous.url
+    }, tab);
+    broadcast().catch(() => {});
+    return;
+  }
 
   const nextUrl = changeInfo.url || tab.url || previous.url;
   chats.set(tabId, {

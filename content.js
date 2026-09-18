@@ -238,8 +238,11 @@
     if (urlChanged) {
       lastUrl = location.href;
       clearFinishTimer();
-      if (localState.state !== "working") setState("idle");
-      else sendCurrentState();
+      clearResetTimer();
+      manualStopUntil = 0;
+      lastErrorScanAt = 0;
+      lastFallbackScanAt = 0;
+      setState("idle");
     }
 
     if (titleChanged) {
@@ -249,13 +252,16 @@
 
     const working = detectWorking(allowFallback);
 
-    if ((localState.state === "retry" || localState.state === "error") && working) {
+    // Active generation wins over stale retry/error UI left behind by ChatGPT.
+    if (working) {
       clearFinishTimer();
-      clearResetTimer();
-      setState("working", {
-        startedAt: Date.now(),
-        finishedAt: null
-      });
+      if (localState.state !== "working") {
+        clearResetTimer();
+        setState("working", {
+          startedAt: Date.now(),
+          finishedAt: null
+        });
+      }
       return;
     }
 
@@ -268,18 +274,6 @@
       if (localState.state !== issue) {
         setState(issue, {
           finishedAt: localState.finishedAt || Date.now()
-        });
-      }
-      return;
-    }
-
-    if (working) {
-      clearFinishTimer();
-      if (localState.state !== "working") {
-        clearResetTimer();
-        setState("working", {
-          startedAt: Date.now(),
-          finishedAt: null
         });
       }
       return;

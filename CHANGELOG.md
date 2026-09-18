@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.5
+
+- Changed the default **Done** sound from Off to **Pop**.
+- Active generation now takes priority over stale Retry/Error UI left behind after retrying.
+- Navigation between conversations clears stale state before detecting the new conversation.
+- Discarded or reloading ChatGPT tabs are reset from stale Working state instead of remaining active indefinitely.
+- Added a short stabilization delay for Done audio; a late Retry/Attention/Error transition cancels the pending Pop to prevent duplicate alerts.
+- Pending Done audio is also cancelled when a tab closes, navigates away or disappears from the registry.
+
 ## 0.2.4
 
 - Added local sound alerts for **Done**, **Retry needed**, **Needs attention** and **Error**.
