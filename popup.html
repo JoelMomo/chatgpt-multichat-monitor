@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ChatGPT MultiChat Monitor</title>
+<style>
+:root{color-scheme:dark;--bg:#0d1117;--card:#151b23;--line:#2b3442;--text:#f2f5f8;--muted:#98a4b5;--accent:#63e6d7}
+*{box-sizing:border-box}body{width:300px;margin:0;padding:18px;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+h1{font-size:16px;margin:0 0 4px}.sub{color:var(--muted);font-size:12px;margin-bottom:16px}.card{border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden}
+.row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 14px;border-bottom:1px solid var(--line)}.row:last-child{border-bottom:0}
+.label{font-weight:650}.hint{font-size:11px;color:var(--muted);margin-top:2px}
+.switch{position:relative;width:42px;height:24px;flex:0 0 auto}.switch input{opacity:0;width:0;height:0}.slider{position:absolute;inset:0;border-radius:999px;background:#343e4e;cursor:pointer;transition:.15s}.slider:before{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;border-radius:50%;background:white;transition:.15s}.switch input:checked+.slider{background:var(--accent)}.switch input:checked+.slider:before{transform:translateX(18px)}
+.footer{margin-top:12px;color:var(--muted);font-size:11px;text-align:center}
+</style>
+</head>
+<body>
+<h1>MultiChat Monitor</h1>
+<div class="sub">Monitor ChatGPT work across your open tabs.</div>
+<div class="card">
+  <div class="row">
+    <div><div class="label">Floating monitor</div><div class="hint">Show the overlay on ChatGPT pages.</div></div>
+    <label class="switch"><input id="enabled" type="checkbox"><span class="slider"></span></label>
+  </div>
+  <div class="row">
+    <div><div class="label">Show idle chats</div><div class="hint">Otherwise only active and recent chats appear.</div></div>
+    <label class="switch"><input id="showIdle" type="checkbox"><span class="slider"></span></label>
+  </div>
+</div>
+<div class="footer">Settings are stored locally in this browser.</div>
+<script src="popup.js"></script>
+</body>
+</html>
