@@ -12,30 +12,56 @@
   <strong>Chrome / Edge · Manifest V3 · Local-first · No external service</strong>
 </p>
 
+<p align="center">
+  <a href="https://github.com/JoelMomo/chatgpt-multichat-monitor/releases">
+    <img src="https://img.shields.io/github/v/release/JoelMomo/chatgpt-multichat-monitor?include_prereleases&style=flat-square" alt="Latest release">
+  </a>
+  <a href="https://joelmomo.github.io/">
+    <img src="https://img.shields.io/badge/Apps%20%26%20tools-Browse-6F8F72?style=flat-square" alt="Browse apps and tools">
+  </a>
+</p>
+
 ## Preview
 
-<table>
-  <tr>
-    <td width="58%">
-      <img src="assets/screenshots/monitor-normal.png" alt="Normal ChatGPT MultiChat Monitor overlay">
-      <br><sub><strong>Normal view</strong> — live state, timers and attention indicators.</sub>
-    </td>
-    <td width="42%">
-      <img src="assets/screenshots/monitor-compact.png" alt="Compact ChatGPT MultiChat Monitor overlay">
-      <br><sub><strong>Compact view</strong> — single-line rows in a 214 px panel.</sub>
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <img src="assets/screenshots/drag-order.png" alt="Chat order drag and drop">
-      <br><sub><strong>Persistent manual order</strong> — drag the handle or use Move up / Move down.</sub>
-    </td>
-    <td>
-      <img src="assets/screenshots/popup.png" alt="ChatGPT MultiChat Monitor settings popup">
-      <br><sub><strong>Settings</strong> — sounds, compact mode, local data and shortcuts.</sub>
-    </td>
-  </tr>
-</table>
+### Monitor
+
+<p align="center">
+  <img src="assets/screenshots/monitor-normal.png" width="410" alt="Normal ChatGPT MultiChat Monitor overlay">
+</p>
+
+<p align="center">
+  <sub><strong>Normal view</strong> — live state, timers, unread Done and attention indicators.</sub>
+</p>
+
+### Compact mode
+
+<p align="center">
+  <img src="assets/screenshots/monitor-compact.png" width="300" alt="Compact ChatGPT MultiChat Monitor overlay">
+</p>
+
+<p align="center">
+  <sub><strong>214 px compact view</strong> — the same information in single-line rows.</sub>
+</p>
+
+### Persistent drag order
+
+<p align="center">
+  <img src="assets/screenshots/drag-order.png" width="410" alt="Chat order drag and drop">
+</p>
+
+<p align="center">
+  <sub>Drag the reorder handle, or use <strong>Move up / Move down</strong>. The order is kept locally.</sub>
+</p>
+
+### Settings
+
+<p align="center">
+  <img src="assets/screenshots/popup.png" width="340" alt="ChatGPT MultiChat Monitor settings popup">
+</p>
+
+<p align="center">
+  <sub>Sound alerts, compact mode, local chat data, recent activity and shortcuts.</sub>
+</p>
 
 ## What it does
 
@@ -202,11 +228,20 @@ Get-Content -Raw manifest.json | ConvertFrom-Json
 git diff --check
 ```
 
-## Support
+## Support development
 
-Support the project from the same page used by the extension:
+These projects are free to use and developed in my spare time. If they've been useful to you, you can help support future development.
 
-https://joelmomo.github.io/#support
+<p>
+  <a href="https://github.com/sponsors/JoelMomo">
+    <img src="https://img.shields.io/badge/GitHub%20Sponsors-Sponsor-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Sponsor on GitHub">
+  </a>
+  <a href="https://ko-fi.com/joelmomodev">
+    <img src="https://img.shields.io/badge/Ko--fi-One--time%20tip-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Leave a tip on Ko-fi">
+  </a>
+</p>
+
+<sub>All projects remain free regardless of support.</sub>
 
 ## License
 
