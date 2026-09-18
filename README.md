@@ -2,15 +2,16 @@
 
 A lightweight Chrome/Edge extension that adds a floating monitor to ChatGPT and shows what your other ChatGPT tabs are doing.
 
-## v0.2.1
+## v0.2.2
 
 The monitor is designed to stay open all day without continuously scanning conversation content.
 
 ### Monitor states
 
 - **Working** - ChatGPT is currently generating.
+- **Retry needed** - a recoverable timeout, delivery/network issue or visible Retry/Reintentar action was detected.
 - **Needs attention** - the response finished with a likely question or explicit request for user input.
-- **Error** - a visible ChatGPT error/retry state was detected.
+- **Error** - a non-recoverable visible ChatGPT error state was detected.
 - **Done** - generation finished normally.
 - **Stopped** - generation was manually stopped.
 - **Idle** - no current or recent activity.
@@ -26,7 +27,7 @@ The monitor is designed to stay open all day without continuously scanning conve
 - Give chats local aliases without changing their real ChatGPT title.
 - Right-click a row or use its **...** menu for chat options.
 - Smart ordering prioritizes pinned chats and states requiring attention.
-- Compact mode.
+- Compact mode with single-line rows and no secondary status text.
 - Draggable and collapsible overlay with saved position.
 
 ### Browser badge
@@ -61,7 +62,7 @@ v0.2.x reduces continuous work compared with the prototype:
 - Observer-triggered checks are throttled.
 - The fast path checks ChatGPT's direct Stop signal.
 - The broad button fallback runs only every 5 seconds.
-- Error detection inspects only visible alert/error elements.
+- Retry/error detection inspects visible alert/error elements and a capped set of visible buttons only while a chat is active or recently finished.
 - The "Needs attention" heuristic reads only the tail of the latest assistant response once when generation finishes.
 - Live timer text is updated only in visible browser tabs.
 - The Working indicator uses a small opacity/transform pulse and can be disabled from the popup.

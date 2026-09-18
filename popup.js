@@ -25,6 +25,7 @@ function stateLabel(state) {
   return ({
     working: "working",
     attention: "attention",
+    retry: "retry",
     error: "error",
     finished: "done",
     interrupted: "stopped"

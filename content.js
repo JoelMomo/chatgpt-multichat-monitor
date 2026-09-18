@@ -90,25 +90,59 @@
     return allowFallback ? fallbackWorkingSignal() : false;
   }
 
-  function detectVisibleError() {
+  function classifyIssueText(text) {
+    const value = String(text || "").trim().slice(0, 700);
+    if (!value) return null;
+
+    if (/(try again|retry|reintentar|vuelve a intentarlo|vuelva a intentarlo|timed out|timeout|time out|se ha agotado el tiempo|delivery timed out|message delivery|network error|connection lost|reconnect|rate limit|too many requests|failed to send)/i.test(value)) {
+      return "retry";
+    }
+
+    if (/(something went wrong|error generating|internal server error|service unavailable|ha ocurrido un error|error al generar|error de servidor)/i.test(value)) {
+      return "error";
+    }
+
+    return null;
+  }
+
+  function isOnScreen(element) {
+    if (!isVisible(element)) return false;
+    const rect = element.getBoundingClientRect();
+    return rect.bottom >= 0 &&
+      rect.right >= 0 &&
+      rect.top <= window.innerHeight &&
+      rect.left <= window.innerWidth;
+  }
+
+  function detectVisibleIssue(force) {
     const now = Date.now();
-    if (now - lastErrorScanAt < ERROR_SCAN_MS) return false;
+    if (!force && now - lastErrorScanAt < ERROR_SCAN_MS) return null;
     lastErrorScanAt = now;
 
     const candidates = document.querySelectorAll(
       '[role="alert"], [data-testid*="error"], [data-testid*="retry"]'
     );
+
     let checked = 0;
     for (const element of candidates) {
-      if (++checked > 16) break;
-      if (!isVisible(element)) continue;
-      const text = String(element.textContent || "").trim().slice(0, 500);
-      if (!text) continue;
-      if (/(something went wrong|network error|error generating|try again|rate limit|failed|connection lost|ha ocurrido un error|error de red|intentalo de nuevo|intÃƒÂ©ntalo de nuevo)/i.test(text)) {
-        return true;
+      if (++checked > 20) break;
+      if (!isOnScreen(element)) continue;
+      const issue = classifyIssueText(element.textContent);
+      if (issue) return issue;
+    }
+
+    if (localState.state !== "idle") {
+      checked = 0;
+      for (const button of document.querySelectorAll("button")) {
+        if (++checked > 80) break;
+        if (!isOnScreen(button)) continue;
+        const label = (button.getAttribute("aria-label") || "") + " " + (button.textContent || "");
+        const issue = classifyIssueText(label);
+        if (issue) return issue;
       }
     }
-    return false;
+
+    return null;
   }
 
   function latestAssistantText() {
@@ -136,7 +170,7 @@
   }
 
   function resetDelayFor(state) {
-    if (state === "attention") return ATTENTION_TTL_MS;
+    if (state === "retry" || state === "attention") return ATTENTION_TTL_MS;
     if (state === "error") return ERROR_TTL_MS;
     if (state === "finished" || state === "interrupted") return RECENT_TTL_MS;
     return 0;
@@ -213,13 +247,31 @@
       sendCurrentState();
     }
 
-    if (detectVisibleError() && localState.state === "working") {
+    const working = detectWorking(allowFallback);
+
+    if ((localState.state === "retry" || localState.state === "error") && working) {
       clearFinishTimer();
-      setState("error", { finishedAt: Date.now() });
+      clearResetTimer();
+      setState("working", {
+        startedAt: Date.now(),
+        finishedAt: null
+      });
       return;
     }
 
-    const working = detectWorking(allowFallback);
+    const issue = localState.state !== "idle"
+      ? detectVisibleIssue(false)
+      : null;
+
+    if (issue) {
+      clearFinishTimer();
+      if (localState.state !== issue) {
+        setState(issue, {
+          finishedAt: localState.finishedAt || Date.now()
+        });
+      }
+      return;
+    }
 
     if (working) {
       clearFinishTimer();
@@ -242,6 +294,12 @@
       const stopped = Date.now() < manualStopUntil;
       if (stopped) {
         setState("interrupted", { finishedAt: Date.now() });
+        return;
+      }
+
+      const issue = detectVisibleIssue(true);
+      if (issue) {
+        setState(issue, { finishedAt: Date.now() });
         return;
       }
 
@@ -273,6 +331,9 @@
     if (chat.state === "working") {
       return "Working " + formatElapsed(now - (chat.startedAt || chat.updatedAt || now));
     }
+    if (chat.state === "retry") {
+      return "Retry needed";
+    }
     if (chat.state === "attention") {
       return "Needs attention";
     }
@@ -291,7 +352,7 @@
   function isRecent(chat, now) {
     if (chat.hidden) return false;
     if (chat.pinned) return true;
-    if (chat.state === "working" || chat.state === "attention" || chat.state === "error") return true;
+    if (chat.state === "working" || chat.state === "retry" || chat.state === "attention" || chat.state === "error") return true;
     if (chat.state === "finished" || chat.state === "interrupted") {
       return now - (chat.finishedAt || chat.updatedAt || 0) < RECENT_TTL_MS;
     }
@@ -461,7 +522,7 @@
   function updateHeaderSummary(visible) {
     const working = chats.filter((chat) => !chat.hidden && chat.state === "working").length;
     const attention = chats.filter((chat) =>
-      !chat.hidden && (chat.state === "attention" || chat.state === "error")
+      !chat.hidden && (chat.state === "retry" || chat.state === "attention" || chat.state === "error")
     ).length;
     const done = visible.filter((chat) => chat.state === "finished").length;
 
@@ -635,7 +696,7 @@
       ".dot{width:9px;height:9px;border-radius:50%;background:#687386;flex:0 0 auto}" +
       ".state-working .dot{background:#63e6d7;box-shadow:0 0 0 3px rgba(99,230,215,.09);animation:workingpulse 1.35s ease-in-out infinite}" +
       ".state-finished .dot{background:#72d99b}.state-interrupted .dot{background:#f2bd68}" +
-      ".state-attention .dot{background:#f7a85b}.state-error .dot{background:#ee7070}" +
+      ".state-retry .dot{background:#f2c86d}.state-attention .dot{background:#f7a85b}.state-error .dot{background:#ee7070}" +
       ".copy{min-width:0;display:flex;flex-direction:column;gap:1px;flex:1}" +
       ".chat-title{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}" +
       ".meta{color:#8e9bad;font-size:11px}.pinned .chat-title{color:#fff}" +
@@ -647,8 +708,11 @@
       ".empty{padding:18px 14px 20px;color:#8e9bad;text-align:center;font-size:12px}" +
       ".foot{padding:8px 12px 10px;color:#6f7c8e;text-align:center;font-size:10px;border-top:1px solid #29313d}" +
       "#panel.collapsed{width:215px}.collapsed .list,.collapsed .empty,.collapsed .foot,.collapsed .summary{display:none}" +
-      ".collapsed .head{border-bottom:0}.compact{width:255px}.compact .chat-main{padding-top:6px;padding-bottom:6px}" +
-      ".compact .meta{font-size:10px}.compact .foot{display:none}" +
+      ".collapsed .head{border-bottom:0}#panel.compact{width:230px}#panel.compact.collapsed{width:190px}" +
+      ".compact .head{height:38px;padding:0 7px 0 10px}.compact .brand{font-size:12px}" +
+      ".compact .summary,.compact .meta,.compact .foot{display:none}" +
+      ".compact .list{padding:4px}.compact .chat-main{padding:6px 5px 6px 8px;gap:8px}" +
+      ".compact .more{width:24px;height:24px;margin-right:3px}.compact .dot{width:8px;height:8px}" +
       ".flash{animation:stateflash 1.2s ease-out 1}.no-animations .state-working .dot,.no-animations .flash{animation:none}" +
       "@keyframes workingpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.52;transform:scale(.82)}}" +
       "@keyframes stateflash{0%{background:#2b3440}100%{background:transparent}}";

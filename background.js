@@ -63,12 +63,13 @@ function decorate(chat) {
 
 function rank(state) {
   return ({
-    attention: 0,
-    error: 1,
-    finished: 2,
-    working: 3,
-    interrupted: 4,
-    idle: 5
+    retry: 0,
+    attention: 1,
+    error: 2,
+    finished: 3,
+    working: 4,
+    interrupted: 5,
+    idle: 6
   })[state] ?? 9;
 }
 
@@ -109,7 +110,7 @@ function recordHistory(chat, previousState) {
 async function updateBadge() {
   const data = snapshot().filter((chat) => !chat.hidden);
   const attentionCount = data.filter((chat) =>
-    chat.state === "attention" || chat.state === "error"
+    chat.state === "retry" || chat.state === "attention" || chat.state === "error"
   ).length;
   const workingCount = data.filter((chat) => chat.state === "working").length;
 
@@ -151,7 +152,7 @@ function upsertState(payload, tab) {
     startedAt = now;
     finishedAt = null;
   }
-  if (["finished", "interrupted", "attention", "error"].includes(state) && !finishedAt) {
+  if (["finished", "interrupted", "retry", "attention", "error"].includes(state) && !finishedAt) {
     finishedAt = now;
   }
   if (state === "idle") {
@@ -391,7 +392,7 @@ chrome.commands.onCommand.addListener((command) => {
   } else if (command === "next-working-chat") {
     cycleChat(["working"]).catch(() => {});
   } else if (command === "next-attention-chat") {
-    cycleChat(["attention", "error", "finished"]).catch(() => {});
+    cycleChat(["retry", "attention", "error", "finished"]).catch(() => {});
   }
 });
 

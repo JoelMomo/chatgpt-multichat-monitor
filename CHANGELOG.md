@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.2
+
+- Added **Retry needed** for recoverable timeout, delivery, network and retry states.
+- Recoverable errors can now override a recent **Done** when the error UI appears slightly later.
+- Added explicit detection for Retry/Reintentar actions and timeout messages such as "Se ha agotado el tiempo...".
+- Retry states use an amber/yellow indicator and count as attention in the extension badge.
+- Compact mode now uses single-line rows, hides secondary status text and reduces panel dimensions and spacing further.
+
 ## 0.2.1
 
 - Fixed aliases, pin and hide preferences colliding between different conversations inside the same GPT.
