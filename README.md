@@ -100,7 +100,7 @@ ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shar
 - Click any row to focus the correct tab and browser window.
 - Pin, hide or locally rename chats.
 - Drag rows to create a persistent manual order; pinned chats remain grouped at the top.
-- Resizable, compact and collapsible overlay with saved position and size.
+- Auto-fitting overlay that follows the visible chats, while still supporting persistent manual resizing, compact mode and collapse.
 - System / Dark / Light themes plus adjustable monitor opacity.
 - Per-state local sound alerts with volume and test controls.
 - Small local recent-activity history.

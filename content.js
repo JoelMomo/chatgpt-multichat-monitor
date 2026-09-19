@@ -743,6 +743,7 @@
     const canResize = settings.monitorCollapsed !== true && settings.monitorCompact !== true;
 
     panel.classList.toggle("manual-size", canResize && !!manualSize);
+    panel.classList.toggle("auto-fit", canResize && !manualSize);
     if (resizeHandle) resizeHandle.hidden = !canResize;
 
     if (!canResize || !manualSize) {
@@ -998,7 +999,9 @@
       "color:#d9e0e8;text-align:left;font:12px system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}" +
       ".menu-action:hover{background:#252d38}" +
       ".empty{padding:18px 14px 20px;color:#8e9bad;text-align:center;font-size:12px}" +
-      ".foot{padding:8px 12px 10px;color:#6f7c8e;text-align:center;font-size:10px;border-top:1px solid #29313d}" +
+      ".foot{min-height:35px;display:flex;align-items:center;justify-content:center;gap:8px;padding:7px 9px 8px 12px;color:#6f7c8e;text-align:center;font-size:10px;border-top:1px solid #29313d}" +
+      ".foot-copy{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.auto-size-button{display:none;flex:0 0 auto;height:22px;padding:0 7px;border:1px solid #354052;border-radius:7px;background:#171d26;color:#aeb8c7;font:600 10px system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}" +
+      ".manual-size .auto-size-button{display:inline-flex;align-items:center}.auto-size-button:hover{background:#252d38;color:#fff;border-color:#465267}" +
       "#panel.collapsed{width:215px}.collapsed .list,.collapsed .empty,.collapsed .foot,.collapsed .summary{display:none}" +
       ".collapsed .head{border-bottom:0}#panel.compact{width:214px}#panel.compact.collapsed{width:174px}" +
       ".compact .head{height:36px;padding:0 6px 0 9px}.compact .brand{font-size:0}.compact .brand::after{content:'Monitor';font-size:11px}" +
@@ -1022,6 +1025,7 @@
       ":host([data-theme='light']) .floating-menu{border-color:#ced7e2;background:#ffffff;box-shadow:0 10px 26px rgba(31,43,58,.2)}" +
       ":host([data-theme='light']) .menu-action{color:#263342}:host([data-theme='light']) .menu-action:hover{background:#edf2f7}" +
       ":host([data-theme='light']) .empty{color:#748196}:host([data-theme='light']) .foot{color:#7c899b;border-top-color:#dce3ec}" +
+      ":host([data-theme='light']) .auto-size-button{border-color:#ccd5df;background:#f8fafc;color:#5c6a7c}:host([data-theme='light']) .auto-size-button:hover{background:#e9eff5;color:#182331;border-color:#b8c4d1}" +
       ":host([data-theme='light']) .resize-handle{background:linear-gradient(135deg,transparent 0 52%,#7d8998 53% 58%,transparent 59% 68%,#7d8998 69% 74%,transparent 75%)}" +
       ".flash{animation:stateflash 1.2s ease-out 1}.no-animations .state-working .dot,.no-animations .flash{animation:none}:host([data-theme='light']) .flash{animation-name:stateflashlight}" +
       "@keyframes workingpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.52;transform:scale(.82)}}" +
@@ -1058,7 +1062,19 @@
 
     const foot = document.createElement("div");
     foot.className = "foot";
-    foot.textContent = "Click to switch · drag ⋮⋮ to reorder";
+
+    const footCopy = document.createElement("span");
+    footCopy.className = "foot-copy";
+    footCopy.textContent = "Click to switch · drag ⋮⋮ to reorder";
+
+    const autoSizeButton = document.createElement("button");
+    autoSizeButton.className = "auto-size-button";
+    autoSizeButton.type = "button";
+    autoSizeButton.textContent = "Auto size";
+    autoSizeButton.title = "Fit monitor to the visible chats";
+    autoSizeButton.setAttribute("aria-label", "Return monitor to automatic size");
+
+    foot.append(footCopy, autoSizeButton);
 
     resizeHandle = document.createElement("div");
     resizeHandle.className = "resize-handle";
@@ -1081,6 +1097,14 @@
         monitorCollapsed: settings.monitorCollapsed
       });
       render();
+    });
+
+    autoSizeButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      settings.monitorSize = null;
+      chrome.storage.local.set({ monitorSize: null });
+      render();
+      applyPosition(settings.monitorPosition);
     });
 
     shadow.addEventListener("click", (event) => {

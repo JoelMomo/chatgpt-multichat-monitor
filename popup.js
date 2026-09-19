@@ -271,7 +271,7 @@ resetPosition.addEventListener("click", async () => {
 
 resetSize.addEventListener("click", async () => {
   await chrome.storage.local.set({ monitorSize: null });
-  showButtonResult(resetSize, "Reset", "Reset size");
+  showButtonResult(resetSize, "Auto", "Auto size");
 });
 
 restoreHidden.addEventListener("click", () => restoreHiddenChats(restoreHidden));

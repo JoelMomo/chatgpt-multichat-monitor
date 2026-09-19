@@ -6,6 +6,7 @@
 - Added an **Opacity** slider in the popup, adjustable from 35% to 100% and applied live to the floating monitor.
 - Added **System**, **Dark** and **Light** themes for both the floating monitor and the extension popup.
 - Compact and collapsed modes temporarily use their fixed dimensions and restore the saved custom size when returning to normal mode.
+- The monitor now auto-fits its height to the visible chats until you manually resize it; a bottom **Auto size** button returns a custom-sized panel to chat-driven sizing.
 
 ## 0.3.0 - 2026-09-19
 
