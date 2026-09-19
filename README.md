@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="https://github.com/JoelMomo/chatgpt-multichat-monitor/releases">
-    <img src="https://img.shields.io/github/v/release/JoelMomo/chatgpt-multichat-monitor?include_prereleases&style=flat-square" alt="Latest release">
+    <img src="https://img.shields.io/github/v/release/JoelMomo/chatgpt-multichat-monitor?style=flat-square" alt="Latest release">
   </a>
   <a href="https://joelmomo.github.io/">
     <img src="https://img.shields.io/badge/Apps%20%26%20tools-Browse-6F8F72?style=flat-square" alt="Browse apps and tools">
@@ -214,14 +214,17 @@ The popup keeps a small local history:
 - Title, state and timestamp only
 - No response or conversation text stored
 
-## Install for testing
+## Install
 
-1. Clone or download this repository.
-2. Open `edge://extensions/` or `chrome://extensions/`.
-3. Enable **Developer mode**.
-4. Choose **Load unpacked**.
-5. Select the repository folder.
-6. Reload existing ChatGPT tabs if required.
+1. Open the latest GitHub release and download the `chatgpt-multichat-monitor-vX.Y.Z.zip` asset.
+2. Extract the ZIP to a permanent folder.
+3. Open `edge://extensions/` or `chrome://extensions/`.
+4. Enable **Developer mode**.
+5. Choose **Load unpacked**.
+6. Select the extracted extension folder.
+7. Reload existing ChatGPT tabs if required.
+
+For development, clone this repository and load the repository root instead.
 
 The extension also attempts to reinject itself into already-open ChatGPT tabs after an extension reload.
 
