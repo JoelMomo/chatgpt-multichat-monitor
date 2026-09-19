@@ -50,7 +50,7 @@
 </p>
 
 <p align="center">
-  <sub>Drag the reorder handle, or use <strong>Move up / Move down</strong>. Add draggable separators when you want independent groups; chats inside each group keep smart state ordering.</sub>
+  <sub>Drag a chat by its name, or use <strong>Move up / Move down</strong>. Separators are dragged directly by their line; chats inside each group keep smart state ordering.</sub>
 </p>
 
 ### Settings
@@ -144,8 +144,8 @@ A normal **Done** keeps only a short late-error grace window for detection; afte
 ## Multi-chat controls
 
 - **Click** a row to switch to that conversation.
-- **Drag `⋮⋮`** to reorder chats.
-- Use the **separator** icon in the header to add a divider, then drag its handle to split or regroup chats. Remove it with the × control on the divider.
+- **Drag the chat name** to reorder or move a conversation between sections.
+- Use the **separator** icon in the header to add a divider, then drag the divider line itself to split or regroup chats. Remove it with the × control on the divider.
 - **Right-click** a row or use **...** for:
   - Set / rename alias
   - Pin / unpin

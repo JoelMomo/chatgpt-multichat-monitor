@@ -13,6 +13,7 @@
 - Enlarged the invisible right-click target around Idle/Pending LEDs without changing the visible LED size, and gave Pending a slow 4.5-second pulse that respects the animation toggle.
 - Replaced the header's letter-based counters and separate alert badge with compact number circles for Working, Done, Pending and Attention; their fills are now deliberately low-opacity while the numbers keep the state color, and zero-value counters stay hidden.
 - Added persistent draggable separators. A header control creates a divider, dragging the divider changes group boundaries, and chats continue to smart-sort by state inside each section.
+- Removed the visible `⋮⋮` drag handles: chat names are now the drag target, separator lines drag directly, and the add-separator icon is slightly smaller.
 
 ## 0.3.0 - 2026-09-19
 
