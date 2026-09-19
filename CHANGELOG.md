@@ -10,6 +10,7 @@
 - **Auto size** now stays visible in the monitor footer and is disabled only while the panel is already following its automatic chat-driven size.
 - Smart ordering now keeps Error, Retry, Attention, unread Done and manual Pending chats above routine states unless the user has created a manual order.
 - Added a persistent manual **Pending** state: right-click an Idle LED to mark/unmark the chat. Pending uses a distinct pink LED and remains local to the extension.
+- Enlarged the invisible right-click target around Idle/Pending LEDs without changing the visible LED size, and gave Pending a slow 4.5-second pulse that respects the animation toggle.
 
 ## 0.3.0 - 2026-09-19
 
