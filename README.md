@@ -89,6 +89,21 @@
   <sub>The cyan <strong>Working</strong> LED pulses while ChatGPT is generating, then switches to lime <strong>Done</strong>.</sub>
 </p>
 
+## What's new in 0.4.0
+
+- **Auto size + manual resize:** the monitor follows the number of visible chats by default, while a custom size remains available whenever you drag the resize handle. The footer's **Auto size** button returns to chat-driven sizing.
+- **Appearance controls:** choose System, Dark or Light theme and adjust monitor opacity from the popup.
+- **Smart priority order:** unless you create a manual order, chats automatically move by priority: Error → Retry → Attention → Done → Pending → Working → Stopped → Draft → Idle.
+- **Pending:** right-click an Idle LED to mark a chat for follow-up. Pending uses a distinct pink LED, pulses much more slowly than Working, and stays marked locally until you clear it. The invisible LED hit target is larger than the visible dot for easier interaction.
+
+<p align="center">
+  <img src="assets/demos/pending.gif" width="430" alt="Real ChatGPT MultiChat Monitor UI showing a slowly pulsing Pending chat">
+</p>
+
+<p align="center">
+  <sub>Captured from the real extension UI. <strong>Pending</strong> uses a slow pink pulse so it remains noticeable without looking active.</sub>
+</p>
+
 ## What it does
 
 ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shares the status of your other open ChatGPT tabs.
