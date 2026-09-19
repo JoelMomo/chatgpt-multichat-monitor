@@ -246,6 +246,8 @@ The popup lets you:
 
 ## Privacy
 
+Public privacy policy: https://joelmomo.github.io/privacy/chatgpt-multichat-monitor/
+
 The content script runs only on `https://chatgpt.com/*`.
 
 It does not send conversation data to an external server. To detect activity it observes ChatGPT interface state. For the optional **Needs attention** classification, it reads only the end of the latest assistant response at the moment generation finishes. That text is not saved or transmitted.
