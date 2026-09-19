@@ -18,7 +18,10 @@
     monitorCollapsed: false,
     monitorCompact: false,
     monitorAnimations: true,
-    monitorPosition: null
+    monitorOpacity: 1,
+    monitorTheme: "dark",
+    monitorPosition: null,
+    monitorSize: null
   };
 
   let localState = {
@@ -46,7 +49,9 @@
   let badge = null;
   let summary = null;
   let collapseButton = null;
+  let resizeHandle = null;
   let dragging = null;
+  let resizing = null;
   let openMenuTabId = null;
   let floatingMenu = null;
   let draggedChatKey = null;
@@ -702,6 +707,54 @@
     setTimeout(() => node.row.classList.remove("flash"), 1200);
   }
 
+  function resolvedTheme(value = settings.monitorTheme) {
+    if (value === "light" || value === "dark") return value;
+    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  }
+
+  function normalizedOpacity(value = settings.monitorOpacity) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 1;
+    return Math.max(0.35, Math.min(1, numeric));
+  }
+
+  function normalizedPanelSize(size) {
+    if (!size || !Number.isFinite(size.width) || !Number.isFinite(size.height)) return null;
+    const maxWidth = Math.max(250, Math.min(560, window.innerWidth - 16));
+    const maxHeight = Math.max(150, Math.min(640, Math.floor(window.innerHeight * 0.78)));
+    return {
+      width: Math.max(250, Math.min(size.width, maxWidth)),
+      height: Math.max(150, Math.min(size.height, maxHeight))
+    };
+  }
+
+  function applyAppearance() {
+    if (!host || !panel) return;
+    const theme = resolvedTheme();
+    host.dataset.theme = theme;
+    const opacity = normalizedOpacity();
+    panel.style.opacity = String(opacity);
+    if (floatingMenu) floatingMenu.style.opacity = String(opacity);
+  }
+
+  function applyPanelSize(size = settings.monitorSize) {
+    if (!panel) return;
+    const manualSize = normalizedPanelSize(size);
+    const canResize = settings.monitorCollapsed !== true && settings.monitorCompact !== true;
+
+    panel.classList.toggle("manual-size", canResize && !!manualSize);
+    if (resizeHandle) resizeHandle.hidden = !canResize;
+
+    if (!canResize || !manualSize) {
+      panel.style.removeProperty("width");
+      panel.style.removeProperty("height");
+      return;
+    }
+
+    panel.style.width = Math.round(manualSize.width) + "px";
+    panel.style.height = Math.round(manualSize.height) + "px";
+  }
+
   function render() {
     if (!panel || !host) return;
 
@@ -711,11 +764,14 @@
     panel.classList.toggle("collapsed", settings.monitorCollapsed === true);
     panel.classList.toggle("compact", settings.monitorCompact === true);
     panel.classList.toggle("no-animations", settings.monitorAnimations === false);
+    applyPanelSize();
+    applyAppearance();
     collapseButton.textContent = settings.monitorCollapsed ? "+" : "-";
     collapseButton.title = settings.monitorCollapsed ? "Expand monitor" : "Collapse monitor";
 
     const now = Date.now();
     const visible = chats.filter((chat) => isRecent(chat, now));
+    panel.classList.toggle("is-empty", visible.length === 0);
     updateHeaderSummary(visible);
 
     const visibleIds = new Set(visible.map((chat) => chat.tabId));
@@ -824,6 +880,73 @@
     });
   }
 
+  function setupResize() {
+    if (!resizeHandle) return;
+
+    const updateResize = (event) => {
+      if (!resizing) return;
+
+      const maxWidth = Math.max(250, Math.min(560, window.innerWidth - resizing.left - 8));
+      const maxHeight = Math.max(150, Math.min(640, window.innerHeight - resizing.top - 8));
+      const next = {
+        width: Math.max(250, Math.min(resizing.startWidth + event.clientX - resizing.startX, maxWidth)),
+        height: Math.max(150, Math.min(resizing.startHeight + event.clientY - resizing.startY, maxHeight))
+      };
+
+      settings.monitorSize = next;
+      panel.classList.add("manual-size");
+      panel.style.width = Math.round(next.width) + "px";
+      panel.style.height = Math.round(next.height) + "px";
+      event.preventDefault();
+    };
+
+    const finishResize = () => {
+      if (!resizing) return;
+      resizing = null;
+      panel.classList.remove("resizing");
+      host.style.pointerEvents = "none";
+      host.style.cursor = "";
+
+      const rect = panel.getBoundingClientRect();
+      const next = {
+        width: Math.round(rect.width),
+        height: Math.round(rect.height)
+      };
+      settings.monitorSize = next;
+      chrome.storage.local.set({ monitorSize: next });
+    };
+
+    resizeHandle.addEventListener("mousedown", (event) => {
+      if (event.button !== 0 ||
+          settings.monitorCollapsed === true ||
+          settings.monitorCompact === true) {
+        return;
+      }
+
+      const rect = panel.getBoundingClientRect();
+      resizing = {
+        startX: event.clientX,
+        startY: event.clientY,
+        startWidth: rect.width,
+        startHeight: rect.height,
+        left: rect.left,
+        top: rect.top
+      };
+
+      host.style.pointerEvents = "auto";
+      host.style.cursor = "nwse-resize";
+      panel.classList.add("resizing");
+      closeMenus();
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    host.addEventListener("mousemove", updateResize, true);
+    host.addEventListener("mouseup", finishResize, true);
+    document.addEventListener("mouseleave", finishResize, true);
+    window.addEventListener("blur", finishResize);
+  }
+
   function buildOverlay() {
     if (host) return;
 
@@ -837,10 +960,10 @@
 
     style.textContent =
       ":host{all:initial}*{box-sizing:border-box}" +
-      "#panel{position:fixed;width:318px;max-height:min(480px,70vh);overflow:visible;pointer-events:auto;" +
+      "#panel{position:fixed;display:flex;flex-direction:column;width:318px;max-height:min(480px,70vh);overflow:visible;pointer-events:auto;" +
       "font:13px/1.35 system-ui,-apple-system,'Segoe UI',sans-serif;color:#f5f7fa;background:#12171f;" +
       "border:1px solid #303846;border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,.34)}" +
-      "#panel.dragging{user-select:none;box-shadow:0 20px 54px rgba(0,0,0,.42)}" +
+      "#panel.dragging,#panel.resizing{user-select:none;box-shadow:0 20px 54px rgba(0,0,0,.42)}" +
       ".head{height:46px;display:flex;align-items:center;gap:8px;padding:0 9px 0 12px;cursor:grab;" +
       "border-bottom:1px solid #29313d}.head:active{cursor:grabbing}" +
       ".brand{font-weight:750;letter-spacing:-.01em;flex:1}.summary{color:#7f8b9b;font-size:10px;white-space:pre}" +
@@ -849,7 +972,7 @@
       ".badge.active{background:#194d47;color:#73f0df}.badge.attention{background:#56351d;color:#ffc984}" +
       ".collapse{width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:#aeb8c7;" +
       "font-size:18px;line-height:1;cursor:pointer}.collapse:hover{background:#202731;color:white}" +
-      ".list{max-height:min(360px,58vh);overflow:auto;padding:7px}" +
+      ".list{max-height:min(360px,58vh);min-height:0;overflow:auto;padding:7px}.manual-size{max-height:none}.manual-size .list{max-height:none;flex:1}.manual-size.is-empty .list{display:none}.manual-size.is-empty .empty{margin:auto 0}" +
       ".chat-row{position:relative;display:flex;align-items:center;gap:3px;border-radius:10px;background:transparent}" +
       ".chat-row:hover,.chat-row.current{background:#1a202a}.chat-row.drag-source{opacity:.42}" +
       ".chat-row.drop-before::before,.chat-row.drop-after::after{content:'';position:absolute;left:7px;right:7px;height:2px;border-radius:999px;background:#63e6d7}" +
@@ -884,9 +1007,25 @@
       ".compact .drag-handle{width:12px;font-size:9px;opacity:.2}.compact .chat-row:hover .drag-handle{opacity:.8}" +
       ".compact .more{width:22px;height:22px;margin-right:2px;opacity:.18;transition:opacity .12s}.compact .chat-row:hover .more,.compact .more:focus-visible{opacity:1}" +
       ".compact .dot{width:8px;height:8px}" +
-      ".flash{animation:stateflash 1.2s ease-out 1}.no-animations .state-working .dot,.no-animations .flash{animation:none}" +
+      ".resize-handle{position:absolute;right:3px;bottom:3px;width:19px;height:19px;border:0;border-radius:0 0 10px 0;cursor:nwse-resize;touch-action:none;opacity:.38;" +
+      "background:linear-gradient(135deg,transparent 0 52%,#718095 53% 58%,transparent 59% 68%,#718095 69% 74%,transparent 75%);transition:opacity .12s}" +
+      ".resize-handle:hover,.resizing .resize-handle{opacity:.86}.compact .resize-handle,.collapsed .resize-handle{display:none}" +
+      ":host([data-theme='light']) #panel{color:#1d2836;background:#f7f9fc;border-color:#d5dde8;box-shadow:0 16px 44px rgba(31,43,58,.2)}" +
+      ":host([data-theme='light']) #panel.dragging,:host([data-theme='light']) #panel.resizing{box-shadow:0 20px 54px rgba(31,43,58,.26)}" +
+      ":host([data-theme='light']) .head{border-bottom-color:#dce3ec}:host([data-theme='light']) .summary{color:#667488}" +
+      ":host([data-theme='light']) .badge{background:#e5eaf0;color:#536174}:host([data-theme='light']) .badge.active{background:#d8f6f1;color:#176b63}:host([data-theme='light']) .badge.attention{background:#fff0df;color:#9a571d}" +
+      ":host([data-theme='light']) .collapse{color:#647286}:host([data-theme='light']) .collapse:hover{background:#e8edf3;color:#182331}" +
+      ":host([data-theme='light']) .chat-row:hover,:host([data-theme='light']) .chat-row.current{background:#eaf0f6}" +
+      ":host([data-theme='light']) .drag-handle{color:#8b97a7}:host([data-theme='light']) .chat-row:hover .drag-handle{color:#536174}" +
+      ":host([data-theme='light']) .more{color:#6c798b}:host([data-theme='light']) .more:hover{background:#dfe6ee;color:#182331}" +
+      ":host([data-theme='light']) .meta{color:#68778b}:host([data-theme='light']) .pinned .chat-title{color:#17212d}" +
+      ":host([data-theme='light']) .floating-menu{border-color:#ced7e2;background:#ffffff;box-shadow:0 10px 26px rgba(31,43,58,.2)}" +
+      ":host([data-theme='light']) .menu-action{color:#263342}:host([data-theme='light']) .menu-action:hover{background:#edf2f7}" +
+      ":host([data-theme='light']) .empty{color:#748196}:host([data-theme='light']) .foot{color:#7c899b;border-top-color:#dce3ec}" +
+      ":host([data-theme='light']) .resize-handle{background:linear-gradient(135deg,transparent 0 52%,#7d8998 53% 58%,transparent 59% 68%,#7d8998 69% 74%,transparent 75%)}" +
+      ".flash{animation:stateflash 1.2s ease-out 1}.no-animations .state-working .dot,.no-animations .flash{animation:none}:host([data-theme='light']) .flash{animation-name:stateflashlight}" +
       "@keyframes workingpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.52;transform:scale(.82)}}" +
-      "@keyframes stateflash{0%{background:#2b3440}100%{background:transparent}}";
+      "@keyframes stateflash{0%{background:#2b3440}100%{background:transparent}}@keyframes stateflashlight{0%{background:#dce7f2}100%{background:transparent}}";
 
     panel = document.createElement("section");
     panel.id = "panel";
@@ -921,7 +1060,13 @@
     foot.className = "foot";
     foot.textContent = "Click to switch · drag ⋮⋮ to reorder";
 
-    panel.append(header, list, empty, foot);
+    resizeHandle = document.createElement("div");
+    resizeHandle.className = "resize-handle";
+    resizeHandle.title = "Resize monitor";
+    resizeHandle.setAttribute("role", "separator");
+    resizeHandle.setAttribute("aria-label", "Resize monitor");
+
+    panel.append(header, list, empty, foot, resizeHandle);
 
     floatingMenu = document.createElement("div");
     floatingMenu.className = "floating-menu";
@@ -945,6 +1090,7 @@
     });
 
     setupDrag();
+    setupResize();
 
     list.addEventListener("dragover", (event) => {
       if (!draggedChatKey) return;
@@ -998,8 +1144,8 @@
     document.addEventListener("pointerdown", (event) => {
       if (event.target !== host) closeMenus();
     }, true);
-    applyPosition(settings.monitorPosition);
     render();
+    applyPosition(settings.monitorPosition);
   }
 
   async function loadSettings() {
@@ -1071,10 +1217,19 @@
     if (areaName !== "local") return;
 
     for (const key of Object.keys(DEFAULTS)) {
-      if (changes[key]) settings[key] = changes[key].newValue;
+      if (changes[key]) {
+        settings[key] = changes[key].newValue === undefined
+          ? DEFAULTS[key]
+          : changes[key].newValue;
+      }
     }
 
     if (changes.monitorPosition) {
+      applyPosition(settings.monitorPosition);
+    }
+
+    if (changes.monitorSize) {
+      applyPanelSize(settings.monitorSize);
       applyPosition(settings.monitorPosition);
     }
 
@@ -1112,8 +1267,14 @@
   window.addEventListener("resize", () => {
     closeMenus();
     if (!panel) return;
+    applyPanelSize(settings.monitorSize);
     const rect = panel.getBoundingClientRect();
     applyPosition({ x: rect.left, y: rect.top });
+  });
+
+  const systemThemeMedia = window.matchMedia("(prefers-color-scheme: light)");
+  systemThemeMedia.addEventListener("change", () => {
+    if (settings.monitorTheme === "system") applyAppearance();
   });
 
   window.addEventListener("popstate", scheduleEvaluate);

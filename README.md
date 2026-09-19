@@ -60,7 +60,7 @@
 </p>
 
 <p align="center">
-  <sub>Sound alerts, compact mode, local chat data, recent activity and shortcuts.</sub>
+  <sub>Theme, opacity, sound alerts, compact mode, local chat data, recent activity and shortcuts.</sub>
 </p>
 
 ## Live demos
@@ -100,7 +100,8 @@ ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shar
 - Click any row to focus the correct tab and browser window.
 - Pin, hide or locally rename chats.
 - Drag rows to create a persistent manual order; pinned chats remain grouped at the top.
-- Compact and collapsible overlay with saved position.
+- Resizable, compact and collapsible overlay with saved position and size.
+- System / Dark / Light themes plus adjustable monitor opacity.
 - Per-state local sound alerts with volume and test controls.
 - Small local recent-activity history.
 - Browser badge and keyboard shortcuts for fast navigation.
@@ -235,8 +236,10 @@ The popup lets you:
 - Enable / disable the floating monitor
 - Show / hide idle chats
 - Enable Compact mode
+- Choose System, Dark or Light theme
+- Adjust floating monitor opacity from 35% to 100%
 - Disable state animations
-- Reset the floating monitor position
+- Reset the floating monitor position or custom size
 - Restore hidden chats
 - Clear local aliases or pins independently
 - Reset manual chat order

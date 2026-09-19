@@ -3,6 +3,8 @@ const DEFAULTS = {
   monitorShowIdle: false,
   monitorCompact: false,
   monitorAnimations: true,
+  monitorOpacity: 1,
+  monitorTheme: "dark",
   monitorSoundsEnabled: true,
   monitorSoundDone: "pop",
   monitorSoundRetry: "potion",
@@ -14,9 +16,13 @@ const DEFAULTS = {
 const enabled = document.getElementById("enabled");
 const showIdle = document.getElementById("showIdle");
 const compact = document.getElementById("compact");
+const theme = document.getElementById("theme");
+const opacity = document.getElementById("opacity");
+const opacityValue = document.getElementById("opacityValue");
 const animations = document.getElementById("animations");
 
 const resetPosition = document.getElementById("resetPosition");
+const resetSize = document.getElementById("resetSize");
 const restoreHidden = document.getElementById("restoreHidden");
 const restoreHiddenData = document.getElementById("restoreHiddenData");
 const clearAliases = document.getElementById("clearAliases");
@@ -51,6 +57,20 @@ const SOUND_CONTROLS = {
   monitorSoundAttention: soundAttention,
   monitorSoundError: soundError
 };
+
+function resolvedTheme(value) {
+  if (value === "light" || value === "dark") return value;
+  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+}
+
+function applyPopupTheme(value) {
+  document.documentElement.dataset.theme = resolvedTheme(value);
+}
+
+function updateOpacityValue(value) {
+  const numeric = Number(value);
+  opacityValue.textContent = Math.round((Number.isFinite(numeric) ? numeric : 1) * 100) + "%";
+}
 
 function relativeTime(timestamp) {
   const seconds = Math.max(0, Math.floor((Date.now() - Number(timestamp || 0)) / 1000));
@@ -197,6 +217,10 @@ async function load() {
   enabled.checked = settings.monitorEnabled !== false;
   showIdle.checked = settings.monitorShowIdle === true;
   compact.checked = settings.monitorCompact === true;
+  theme.value = settings.monitorTheme || DEFAULTS.monitorTheme;
+  opacity.value = settings.monitorOpacity ?? DEFAULTS.monitorOpacity;
+  updateOpacityValue(opacity.value);
+  applyPopupTheme(theme.value);
   animations.checked = settings.monitorAnimations !== false;
 
   soundsEnabled.checked = settings.monitorSoundsEnabled !== false;
@@ -225,6 +249,17 @@ compact.addEventListener("change", () => {
   chrome.storage.local.set({ monitorCompact: compact.checked });
 });
 
+theme.addEventListener("change", () => {
+  chrome.storage.local.set({ monitorTheme: theme.value });
+  applyPopupTheme(theme.value);
+});
+
+opacity.addEventListener("input", () => {
+  const value = Number(opacity.value);
+  updateOpacityValue(value);
+  chrome.storage.local.set({ monitorOpacity: value });
+});
+
 animations.addEventListener("change", () => {
   chrome.storage.local.set({ monitorAnimations: animations.checked });
 });
@@ -232,6 +267,11 @@ animations.addEventListener("change", () => {
 resetPosition.addEventListener("click", async () => {
   await chrome.storage.local.set({ monitorPosition: null });
   showButtonResult(resetPosition, "Reset", "Reset position");
+});
+
+resetSize.addEventListener("click", async () => {
+  await chrome.storage.local.set({ monitorSize: null });
+  showButtonResult(resetSize, "Reset", "Reset size");
 });
 
 restoreHidden.addEventListener("click", () => restoreHiddenChats(restoreHidden));
@@ -298,6 +338,10 @@ dismissWhatsNew.addEventListener("click", async () => {
   }).catch(() => null);
 
   if (response?.ok) renderUpdateInfo(response);
+});
+
+window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+  if (theme.value === "system") applyPopupTheme("system");
 });
 
 load();

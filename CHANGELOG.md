@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased - 0.4.0
+
+- Added persistent panel resizing from a discreet bottom-right handle, with viewport clamping and a **Reset size** control.
+- Added an **Opacity** slider in the popup, adjustable from 35% to 100% and applied live to the floating monitor.
+- Added **System**, **Dark** and **Light** themes for both the floating monitor and the extension popup.
+- Compact and collapsed modes temporarily use their fixed dimensions and restore the saved custom size when returning to normal mode.
+
 ## 0.3.0 - 2026-09-19
 
 - Made unread **Done** much easier to distinguish from **Working**: Done now uses a brighter lime LED with a subtle glow and left-edge accent.

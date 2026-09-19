@@ -153,9 +153,14 @@ function updateAvailable() {
 
 function releaseUrlForVersion(version) {
   const normalized = normalizeVersion(version);
-  return normalized
-    ? RELEASES_PAGE_URL + "/tag/v" + encodeURIComponent(normalized)
-    : RELEASES_PAGE_URL;
+  if (!normalized) return RELEASES_PAGE_URL;
+
+  const latestKnown = normalizeVersion(updateState.latestVersion);
+  if (latestKnown && compareVersions(normalized, latestKnown) <= 0) {
+    return RELEASES_PAGE_URL + "/tag/v" + encodeURIComponent(normalized);
+  }
+
+  return RELEASES_PAGE_URL;
 }
 
 function publicUpdateInfo() {

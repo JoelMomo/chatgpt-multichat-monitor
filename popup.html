@@ -6,6 +6,7 @@
 <title>ChatGPT MultiChat Monitor</title>
 <style>
 :root{color-scheme:dark;--bg:#0d1117;--card:#151b23;--line:#2b3442;--text:#f2f5f8;--muted:#98a4b5;--accent:#63e6d7}
+:root[data-theme="light"]{color-scheme:light;--bg:#f3f6fa;--card:#ffffff;--line:#d7dee8;--text:#1d2836;--muted:#68778a;--accent:#168c82}
 *{box-sizing:border-box}
 body{width:338px;margin:0;padding:16px;background:var(--bg);color:var(--text);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
 h1{font-size:16px;margin:0 0 3px}.sub{color:var(--muted);font-size:11px;margin-bottom:13px}
@@ -18,7 +19,8 @@ h1{font-size:16px;margin:0 0 3px}.sub{color:var(--muted);font-size:11px;margin-b
 .switch input:checked+.slider{background:#287f77}.switch input:checked+.slider:before{transform:translateX(18px)}
 select{height:30px;border:1px solid #354052;border-radius:8px;background:#111821;color:var(--text);padding:0 7px;font:11px system-ui;outline:none}
 select:focus{border-color:var(--accent)}
-.actions{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px}
+.setting-select{width:108px}.opacity-control{display:flex;align-items:center;gap:7px;min-width:132px}.opacity-control input{width:88px;accent-color:var(--accent)}.opacity-value{width:37px;text-align:right;color:var(--muted);font-size:10px;font-variant-numeric:tabular-nums}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px}.actions #restoreHidden{grid-column:1/-1}
 button,.support{display:flex;align-items:center;justify-content:center;min-height:34px;border-radius:9px;font:700 11px system-ui;cursor:pointer;text-decoration:none}
 button{border:1px solid #354052;background:#18202b;color:var(--text);padding:8px 9px}button:hover{background:#222c39}
 .support{grid-column:1/-1;border:0;color:#061218;background:linear-gradient(135deg,#63e6d7,#56b9ff);box-shadow:0 8px 24px #32cfe522}.support:hover{filter:brightness(1.07)}
@@ -47,6 +49,14 @@ kbd{padding:1px 4px;border:1px solid #3c4758;border-bottom-width:2px;border-radi
 .notice-link{display:flex;align-items:center;justify-content:center;border:1px solid #3c638f;border-radius:8px;background:#172638;color:#dcecff;text-decoration:none;font-weight:750}
 .notice-link:hover{background:#1d3148}.notice.whats-new .notice-link{border-color:#2d615c;background:#15302d;color:#d9fff9}.notice.whats-new .notice-link:hover{background:#1a3b37}
 .footer{text-align:center;color:#687587;font-size:9px;margin-top:9px}
+:root[data-theme="light"] .slider{background:#cbd4df}:root[data-theme="light"] .switch input:checked+.slider{background:#45a99f}
+:root[data-theme="light"] select{border-color:#ccd5df;background:#f8fafc}:root[data-theme="light"] button{border-color:#ccd5df;background:#fff}:root[data-theme="light"] button:hover{background:#eef3f8}
+:root[data-theme="light"] .sound-name,:root[data-theme="light"] kbd{color:#334154}:root[data-theme="light"] .history,:root[data-theme="light"] .event{border-color:#dce3eb}
+:root[data-theme="light"] kbd{border-color:#bdc8d5;background:#f8fafc}:root[data-theme="light"] .notice{border-color:#d7dee8;background:#fff}
+:root[data-theme="light"] .notice.update{border-color:#b8cee6;background:#f4f8fd}:root[data-theme="light"] .notice.whats-new{border-color:#b9d9d3;background:#f3faf8}
+:root[data-theme="light"] .notice-link{border-color:#a9c5e3;background:#eaf3fc;color:#244d74}:root[data-theme="light"] .notice-link:hover{background:#dfeefa}
+:root[data-theme="light"] .notice.whats-new .notice-link{border-color:#a9d3cb;background:#e8f6f3;color:#23655d}:root[data-theme="light"] .notice.whats-new .notice-link:hover{background:#dcf0ec}
+:root[data-theme="light"] .footer{color:#79879a}
 </style>
 </head>
 <body>
@@ -75,11 +85,14 @@ kbd{padding:1px 4px;border:1px solid #3c4758;border-bottom-width:2px;border-radi
   <div class="row"><div><div class="label">Floating monitor</div><div class="hint">Show the overlay on ChatGPT pages.</div></div><label class="switch"><input id="enabled" type="checkbox"><span class="slider"></span></label></div>
   <div class="row"><div><div class="label">Show idle chats</div><div class="hint">Pinned chats always remain visible.</div></div><label class="switch"><input id="showIdle" type="checkbox"><span class="slider"></span></label></div>
   <div class="row"><div><div class="label">Compact mode</div><div class="hint">Single-line rows and reduced controls.</div></div><label class="switch"><input id="compact" type="checkbox"><span class="slider"></span></label></div>
+  <div class="row"><div><div class="label">Theme</div><div class="hint">Match the system or choose a fixed appearance.</div></div><select class="setting-select" id="theme"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
+  <div class="row"><div><div class="label">Opacity</div><div class="hint">Adjust the floating monitor transparency.</div></div><div class="opacity-control"><input id="opacity" type="range" min="0.35" max="1" step="0.05"><span class="opacity-value" id="opacityValue">100%</span></div></div>
   <div class="row"><div><div class="label">State animation</div><div class="hint">Working pulse and short state highlights.</div></div><label class="switch"><input id="animations" type="checkbox"><span class="slider"></span></label></div>
 </div>
 
 <div class="actions">
   <button id="resetPosition" type="button">Reset position</button>
+  <button id="resetSize" type="button">Reset size</button>
   <button id="restoreHidden" type="button">Restore hidden</button>
 </div>
 
