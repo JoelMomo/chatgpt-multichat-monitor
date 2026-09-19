@@ -1087,8 +1087,8 @@
     for (const [state, label] of [
       ["working", "Working"],
       ["done", "Done"],
-      ["attention", "Needs attention"],
-      ["pending", "Pending"]
+      ["pending", "Pending"],
+      ["attention", "Needs attention"]
     ]) {
       const count = document.createElement("span");
       count.className = "count-badge count-" + state;
