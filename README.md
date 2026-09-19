@@ -99,7 +99,8 @@ ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shar
 - Detects recoverable **Retry needed** states, likely **Needs attention** responses and visible **Errors**.
 - Click any row to focus the correct tab and browser window.
 - Pin, hide or locally rename chats.
-- Drag rows to create a persistent manual order; pinned chats remain grouped at the top.
+- Without a manual order, chats automatically move by priority so errors, attention states, unread Done and Pending stay near the top; dragging a row switches that chat group to persistent manual order.
+- Right-click an Idle LED to mark that conversation as **Pending**; right-click the pink Pending LED again to clear it.
 - Auto-fitting overlay that follows the visible chats, while still supporting persistent manual resizing, compact mode and collapse.
 - System / Dark / Light themes plus adjustable monitor opacity.
 - Per-state local sound alerts with volume and test controls.
@@ -118,7 +119,8 @@ ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shar
 | **Error** | Red | A visible non-recoverable ChatGPT error was detected. |
 | **Stopped** | Amber | Generation was manually stopped. |
 | **Draft** | Violet | The prompt box contains unsent text and no higher-priority state is active. |
-| **Idle** | Gray | No current or unread activity. Hidden by default unless requested or pinned. |
+| **Pending** | Pink | Manually marked for follow-up. Right-click the LED to clear it. |
+| **Idle** | Gray | No current or unread activity. Right-click its LED to mark it Pending. Hidden by default unless requested or pinned. |
 
 A normal **Done** keeps only a short late-error grace window for detection; after that it remains lime without continuing error scans until you visit it.
 
@@ -133,6 +135,7 @@ A normal **Done** keeps only a short late-error grace window for detection; afte
   - Move up / Move down
   - Hide
 - **Reset chat order** returns to automatic smart sorting.
+- Automatic smart sorting prioritizes Error → Retry → Attention → Done → Pending → Working → Stopped → Draft → Idle.
 - Pinned chats stay in the top group.
 
 ## Sound alerts

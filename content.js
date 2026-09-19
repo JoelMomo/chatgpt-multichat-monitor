@@ -50,6 +50,7 @@
   let summary = null;
   let collapseButton = null;
   let resizeHandle = null;
+  let autoSizeButton = null;
   let dragging = null;
   let resizing = null;
   let openMenuTabId = null;
@@ -406,6 +407,7 @@
       finished: "Done",
       interrupted: "Stopped",
       draft: "Draft",
+      pending: "Pending",
       idle: "Idle"
     })[state] || "Unknown";
   }
@@ -426,7 +428,7 @@
   function isRecent(chat, now) {
     if (chat.hidden) return false;
     if (chat.pinned) return true;
-    if (chat.state === "working" || chat.state === "retry" || chat.state === "attention" || chat.state === "error" || chat.state === "draft") return true;
+    if (chat.state === "working" || chat.state === "retry" || chat.state === "attention" || chat.state === "error" || chat.state === "draft" || chat.state === "pending") return true;
     if (chat.state === "finished") return true;
     if (chat.state === "interrupted") {
       return now - (chat.finishedAt || chat.updatedAt || 0) < RECENT_TTL_MS;
@@ -600,6 +602,15 @@
       clearDropMarkers();
     });
 
+    dot.addEventListener("contextmenu", (event) => {
+      if (!node.chat || !["idle", "pending"].includes(node.chat.state)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setChatPreference(node.chat.chatKey, {
+        pending: node.chat.state !== "pending"
+      });
+    });
+
     main.addEventListener("click", () => activateChat(tabId));
     main.addEventListener("contextmenu", (event) => {
       event.preventDefault();
@@ -687,7 +698,7 @@
   function updateHeaderSummary(visible) {
     const working = chats.filter((chat) => !chat.hidden && chat.state === "working").length;
     const attention = chats.filter((chat) =>
-      !chat.hidden && (chat.state === "retry" || chat.state === "attention" || chat.state === "error")
+      !chat.hidden && (chat.state === "retry" || chat.state === "attention" || chat.state === "error" || chat.state === "pending")
     ).length;
     const done = visible.filter((chat) => chat.state === "finished").length;
 
@@ -745,6 +756,12 @@
     panel.classList.toggle("manual-size", canResize && !!manualSize);
     panel.classList.toggle("auto-fit", canResize && !manualSize);
     if (resizeHandle) resizeHandle.hidden = !canResize;
+    if (autoSizeButton) {
+      autoSizeButton.disabled = !canResize || !manualSize;
+      autoSizeButton.title = manualSize
+        ? "Fit monitor to the visible chats"
+        : "Monitor already follows the visible chats";
+    }
 
     if (!canResize || !manualSize) {
       panel.style.removeProperty("width");
@@ -794,7 +811,11 @@
 
       node.title.textContent = (chat.pinned ? "📌 " : "") + (chat.displayTitle || chat.title || "ChatGPT");
       node.meta.textContent = statusText(chat, now);
-      node.dot.title = stateName(chat.state);
+      node.dot.title = chat.state === "idle"
+        ? "Idle — right-click to mark Pending"
+        : chat.state === "pending"
+          ? "Pending — right-click to clear"
+          : stateName(chat.state);
       node.dot.setAttribute("aria-label", stateName(chat.state));
       node.main.setAttribute(
         "aria-label",
@@ -990,6 +1011,7 @@
       ".state-retry .dot{background:#ffd65a;box-shadow:0 0 0 3px rgba(255,214,90,.08)}" +
       ".state-attention .dot{background:#ff914d;box-shadow:0 0 0 3px rgba(255,145,77,.08)}" +
       ".state-error .dot{background:#ee7070}.state-draft .dot{background:#a78bfa;box-shadow:0 0 0 3px rgba(167,139,250,.07)}" +
+      ".state-pending .dot{background:#f472b6;box-shadow:0 0 0 3px rgba(244,114,182,.08),0 0 9px rgba(244,114,182,.18)}" +
       ".copy{min-width:0;display:flex;flex-direction:column;gap:1px;flex:1}" +
       ".chat-title{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}" +
       ".meta{color:#8e9bad;font-size:11px}.pinned .chat-title{color:#fff}" +
@@ -1000,8 +1022,8 @@
       ".menu-action:hover{background:#252d38}" +
       ".empty{padding:18px 14px 20px;color:#8e9bad;text-align:center;font-size:12px}" +
       ".foot{min-height:35px;display:flex;align-items:center;justify-content:center;gap:8px;padding:7px 9px 8px 12px;color:#6f7c8e;text-align:center;font-size:10px;border-top:1px solid #29313d}" +
-      ".foot-copy{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.auto-size-button{display:none;flex:0 0 auto;height:22px;padding:0 7px;border:1px solid #354052;border-radius:7px;background:#171d26;color:#aeb8c7;font:600 10px system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}" +
-      ".manual-size .auto-size-button{display:inline-flex;align-items:center}.auto-size-button:hover{background:#252d38;color:#fff;border-color:#465267}" +
+      ".foot-copy{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.auto-size-button{display:inline-flex;align-items:center;flex:0 0 auto;height:22px;padding:0 7px;border:1px solid #354052;border-radius:7px;background:#171d26;color:#aeb8c7;font:600 10px system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}" +
+      ".auto-size-button:hover:not(:disabled){background:#252d38;color:#fff;border-color:#465267}.auto-size-button:disabled{opacity:.38;cursor:default}" +
       "#panel.collapsed{width:215px}.collapsed .list,.collapsed .empty,.collapsed .foot,.collapsed .summary{display:none}" +
       ".collapsed .head{border-bottom:0}#panel.compact{width:214px}#panel.compact.collapsed{width:174px}" +
       ".compact .head{height:36px;padding:0 6px 0 9px}.compact .brand{font-size:0}.compact .brand::after{content:'Monitor';font-size:11px}" +
@@ -1067,7 +1089,7 @@
     footCopy.className = "foot-copy";
     footCopy.textContent = "Click to switch · drag ⋮⋮ to reorder";
 
-    const autoSizeButton = document.createElement("button");
+    autoSizeButton = document.createElement("button");
     autoSizeButton.className = "auto-size-button";
     autoSizeButton.type = "button";
     autoSizeButton.textContent = "Auto size";

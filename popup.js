@@ -27,6 +27,7 @@ const restoreHidden = document.getElementById("restoreHidden");
 const restoreHiddenData = document.getElementById("restoreHiddenData");
 const clearAliases = document.getElementById("clearAliases");
 const clearPins = document.getElementById("clearPins");
+const clearPending = document.getElementById("clearPending");
 const resetOrder = document.getElementById("resetOrder");
 const clearHistory = document.getElementById("clearHistory");
 const historyRoot = document.getElementById("history");
@@ -283,6 +284,10 @@ clearAliases.addEventListener("click", () => {
 
 clearPins.addEventListener("click", () => {
   clearPreferenceField("pinned", clearPins, "Cleared", "Clear pins");
+});
+
+clearPending.addEventListener("click", () => {
+  clearPreferenceField("pending", clearPending, "Cleared", "Clear pending");
 });
 
 resetOrder.addEventListener("click", async () => {

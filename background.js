@@ -296,11 +296,14 @@ function prefsFor(key) {
 
 function decorate(chat) {
   const prefs = prefsFor(chat.chatKey);
+  const pending = prefs.pending === true;
   return {
     ...chat,
+    state: pending && chat.state === "idle" ? "pending" : chat.state,
     alias: typeof prefs.alias === "string" ? prefs.alias : "",
     pinned: prefs.pinned === true,
     hidden: prefs.hidden === true,
+    pending,
     displayTitle: (typeof prefs.alias === "string" && prefs.alias.trim())
       ? prefs.alias.trim()
       : chat.title
@@ -309,14 +312,15 @@ function decorate(chat) {
 
 function rank(state) {
   return ({
-    retry: 0,
-    attention: 1,
-    error: 2,
+    error: 0,
+    retry: 1,
+    attention: 2,
     finished: 3,
-    working: 4,
-    interrupted: 5,
-    draft: 6,
-    idle: 7
+    pending: 4,
+    working: 5,
+    interrupted: 6,
+    draft: 7,
+    idle: 8
   })[state] ?? 9;
 }
 
@@ -476,7 +480,7 @@ async function closeOffscreenIfIdle() {
 async function updateBadge() {
   const data = snapshot().filter((chat) => !chat.hidden);
   const attentionCount = data.filter((chat) =>
-    chat.state === "retry" || chat.state === "attention" || chat.state === "error"
+    chat.state === "retry" || chat.state === "attention" || chat.state === "error" || chat.state === "pending"
   ).length;
   const workingCount = data.filter((chat) => chat.state === "working").length;
 
@@ -665,8 +669,12 @@ async function setChatPreference(chatKey, patch) {
   if (Object.prototype.hasOwnProperty.call(patch, "hidden")) {
     next.hidden = patch.hidden === true;
   }
+  if (Object.prototype.hasOwnProperty.call(patch, "pending")) {
+    if (patch.pending === true) next.pending = true;
+    else delete next.pending;
+  }
 
-  if (!next.alias && !next.pinned && !next.hidden) delete chatPrefs[chatKey];
+  if (!next.alias && !next.pinned && !next.hidden && !next.pending) delete chatPrefs[chatKey];
   else chatPrefs[chatKey] = next;
 
   await chrome.storage.local.set({ [PREFS_KEY]: chatPrefs });
@@ -675,13 +683,13 @@ async function setChatPreference(chatKey, patch) {
 
 async function clearChatPreferenceField(field) {
   await ensureInitialized();
-  if (!["alias", "pinned", "hidden"].includes(field)) return false;
+  if (!["alias", "pinned", "hidden", "pending"].includes(field)) return false;
 
   for (const key of Object.keys(chatPrefs)) {
     const next = { ...chatPrefs[key] };
     delete next[field];
 
-    if (!next.alias && !next.pinned && !next.hidden) delete chatPrefs[key];
+    if (!next.alias && !next.pinned && !next.hidden && !next.pending) delete chatPrefs[key];
     else chatPrefs[key] = next;
   }
 
@@ -909,7 +917,7 @@ chrome.commands.onCommand.addListener((command) => {
   } else if (command === "next-working-chat") {
     cycleChat(["working"]).catch(() => {});
   } else if (command === "next-attention-chat") {
-    cycleChat(["retry", "attention", "error", "finished"]).catch(() => {});
+    cycleChat(["error", "retry", "attention", "finished", "pending"]).catch(() => {});
   }
 });
 
