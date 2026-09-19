@@ -26,27 +26,27 @@
 ### Monitor
 
 <p align="center">
-  <img src="assets/demos/monitor-status.gif" width="410" alt="ChatGPT MultiChat Monitor Working LED pulsing and changing to Done">
+  <img src="assets/screenshots/monitor-normal.png" width="410" alt="Normal ChatGPT MultiChat Monitor overlay">
 </p>
 
 <p align="center">
-  <sub><strong>Normal view</strong> — the cyan Working LED pulses while active, and a finished chat switches to lime Done.</sub>
+  <sub><strong>Normal view</strong> — live state, timers, unread Done and attention indicators.</sub>
 </p>
 
 ### Compact mode
 
 <p align="center">
-  <img src="assets/demos/compact-mode.gif" width="700" alt="Compact mode switch smoothly changing the popup and floating monitor">
+  <img src="assets/screenshots/monitor-compact.png" width="300" alt="Compact ChatGPT MultiChat Monitor overlay">
 </p>
 
 <p align="center">
-  <sub>Flip <strong>Compact mode</strong> in the popup and the monitor smoothly contracts into the 214 px single-line layout.</sub>
+  <sub><strong>214 px compact view</strong> — the same information in single-line rows.</sub>
 </p>
 
 ### Persistent chat order
 
 <p align="center">
-  <img src="assets/demos/persistent-order.gif" width="410" alt="Dragging a monitored ChatGPT conversation upward in the persistent order">
+  <img src="assets/screenshots/drag-order.png" width="410" alt="Chat order drag and drop">
 </p>
 
 <p align="center">
@@ -56,31 +56,11 @@
 ### Settings
 
 <p align="center">
-  <img src="assets/demos/settings-controls.gif" width="340" alt="ChatGPT MultiChat Monitor settings switches and sound selector">
+  <img src="assets/screenshots/popup.png" width="340" alt="ChatGPT MultiChat Monitor settings popup">
 </p>
 
 <p align="center">
-  <sub>Flip settings, test local controls and open a sound selector directly from the popup.</sub>
-</p>
-
-### Dark / Light theme
-
-<p align="center">
-  <img src="assets/demos/theme-switch.gif" width="340" alt="Smooth transition between Dark and Light themes in ChatGPT MultiChat Monitor">
-</p>
-
-<p align="center">
-  <sub>Switch between <strong>Dark</strong> and <strong>Light</strong> with a short, soft transition instead of an abrupt redraw.</sub>
-</p>
-
-### Resizable monitor
-
-<p align="center">
-  <img src="assets/demos/resize-monitor.gif" width="560" alt="Resizing the ChatGPT MultiChat Monitor floating panel">
-</p>
-
-<p align="center">
-  <sub>Drag the bottom-right handle to resize the floating monitor. The custom size is kept locally.</sub>
+  <sub>Theme, opacity, sound alerts, compact mode, local chat data, recent activity and shortcuts.</sub>
 </p>
 
 ## Live demos
