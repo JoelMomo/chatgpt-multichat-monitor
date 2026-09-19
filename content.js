@@ -33,6 +33,7 @@
 
   let settings = { ...DEFAULTS };
   let chats = [];
+  let separators = [];
   let finishTimer = null;
   let resetTimer = null;
   let evaluationTimer = null;
@@ -48,6 +49,7 @@
   let empty = null;
   let summary = null;
   let countBadges = null;
+  let addSeparatorButton = null;
   let collapseButton = null;
   let resizeHandle = null;
   let autoSizeButton = null;
@@ -56,10 +58,11 @@
   let openMenuTabId = null;
   let floatingMenu = null;
   let draggedChatKey = null;
-  let draggedPinned = null;
+  let draggedSeparatorId = null;
   let dropTarget = null;
 
   const rowNodes = new Map();
+  const separatorNodes = new Map();
   const renderedStates = new Map();
 
   function isVisible(element) {
@@ -459,11 +462,34 @@
     });
   }
 
+  function layoutTokenForElement(element) {
+    if (!(element instanceof Element)) return "";
+    if (element.dataset.separatorId) return "s:" + element.dataset.separatorId;
+    if (element.dataset.chatKey) return "c:" + element.dataset.chatKey;
+    return "";
+  }
+
+  function currentLayoutTokens() {
+    return [...list.children]
+      .map(layoutTokenForElement)
+      .filter(Boolean);
+  }
+
+  function persistLayoutMove(draggedToken, targetToken, before) {
+    const tokens = currentLayoutTokens().filter((token) => token !== draggedToken);
+    let targetIndex = tokens.indexOf(targetToken);
+    if (targetIndex < 0) return Promise.resolve(null);
+    if (!before) targetIndex += 1;
+    tokens.splice(targetIndex, 0, draggedToken);
+    return sendMessage({ type: "monitor-set-layout", tokens });
+  }
+
   function visibleGroupFor(chat) {
     const now = Date.now();
     return chats.filter((item) =>
       !item.hidden &&
       item.pinned === chat.pinned &&
+      (!separators.length || (item.section === chat.section && item.state === chat.state)) &&
       isRecent(item, now)
     );
   }
@@ -492,24 +518,9 @@
     for (const node of rowNodes.values()) {
       node.row.classList.remove("drop-before", "drop-after", "drag-source");
     }
-  }
-
-  function reorderDraggedChat(targetChat, before) {
-    const draggedChat = chats.find((item) => item.chatKey === draggedChatKey);
-    if (!draggedChat || !targetChat || draggedChat.pinned !== targetChat.pinned) return Promise.resolve(null);
-
-    const group = visibleGroupFor(draggedChat);
-    const draggedIndex = group.findIndex((item) => item.chatKey === draggedChat.chatKey);
-    if (draggedIndex < 0) return Promise.resolve(null);
-
-    const reordered = [...group];
-    const [moved] = reordered.splice(draggedIndex, 1);
-    let targetIndex = reordered.findIndex((item) => item.chatKey === targetChat.chatKey);
-    if (targetIndex < 0) return Promise.resolve(null);
-    if (!before) targetIndex += 1;
-    reordered.splice(targetIndex, 0, moved);
-
-    return persistGroupOrder(reordered);
+    for (const node of separatorNodes.values()) {
+      node.row.classList.remove("drop-before", "drop-after", "drag-source");
+    }
   }
 
   function closeMenus() {
@@ -527,6 +538,57 @@
       action();
     });
     return button;
+  }
+
+  function createSeparatorRow(id) {
+    const row = document.createElement("div");
+    row.className = "section-separator";
+    row.dataset.separatorId = id;
+
+    const handle = document.createElement("span");
+    handle.className = "separator-handle";
+    handle.draggable = true;
+    handle.textContent = "⋮⋮";
+    handle.title = "Drag separator";
+    handle.setAttribute("aria-label", "Drag separator");
+
+    const line = document.createElement("span");
+    line.className = "separator-line";
+    line.setAttribute("aria-hidden", "true");
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "separator-remove";
+    remove.textContent = "×";
+    remove.title = "Remove separator";
+    remove.setAttribute("aria-label", "Remove separator");
+
+    row.append(handle, line, remove);
+
+    handle.addEventListener("dragstart", (event) => {
+      draggedSeparatorId = id;
+      draggedChatKey = null;
+      row.classList.add("drag-source");
+      closeMenus();
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", "s:" + id);
+      }
+    });
+
+    handle.addEventListener("dragend", () => {
+      draggedSeparatorId = null;
+      clearDropMarkers();
+    });
+
+    remove.addEventListener("click", (event) => {
+      event.stopPropagation();
+      sendMessage({ type: "monitor-remove-separator", id });
+    });
+
+    const node = { row, handle, line, remove };
+    separatorNodes.set(id, node);
+    return node;
   }
 
   function createRow(tabId) {
@@ -586,7 +648,7 @@
       }
 
       draggedChatKey = node.chat.chatKey;
-      draggedPinned = node.chat.pinned;
+      draggedSeparatorId = null;
       row.classList.add("drag-source");
       closeMenus();
 
@@ -598,7 +660,6 @@
 
     handle.addEventListener("dragend", () => {
       draggedChatKey = null;
-      draggedPinned = null;
       clearDropMarkers();
     });
 
@@ -804,10 +865,12 @@
 
     const now = Date.now();
     const visible = chats.filter((chat) => isRecent(chat, now));
-    panel.classList.toggle("is-empty", visible.length === 0);
+    const hasContent = visible.length > 0 || separators.length > 0;
+    panel.classList.toggle("is-empty", !hasContent);
     updateHeaderSummary(visible);
 
     const visibleIds = new Set(visible.map((chat) => chat.tabId));
+    const separatorIds = new Set(separators.map((separator) => separator.id));
 
     for (const [tabId, node] of rowNodes) {
       if (!visibleIds.has(tabId)) {
@@ -816,10 +879,24 @@
         renderedStates.delete(tabId);
       }
     }
+    for (const [id, node] of separatorNodes) {
+      if (!separatorIds.has(id)) {
+        node.row.remove();
+        separatorNodes.delete(id);
+      }
+    }
 
+    const groups = new Map([["", []]]);
+    for (const separator of separators) groups.set(separator.id, []);
     for (const chat of visible) {
+      const section = groups.has(chat.section) ? chat.section : "";
+      groups.get(section).push(chat);
+    }
+
+    const appendChat = (chat) => {
       const node = rowNodes.get(chat.tabId) || createRow(chat.tabId);
       node.chat = chat;
+      node.row.dataset.chatKey = chat.chatKey;
       node.row.className = "chat-row state-" + chat.state;
       if (chat.url === location.href) node.row.classList.add("current");
       if (chat.pinned) node.row.classList.add("pinned");
@@ -839,9 +916,17 @@
 
       maybeFlash(node, chat);
       list.appendChild(node.row);
+    };
+
+    for (const chat of groups.get("")) appendChat(chat);
+    for (const separator of separators) {
+      const node = separatorNodes.get(separator.id) || createSeparatorRow(separator.id);
+      node.row.className = "section-separator";
+      list.appendChild(node.row);
+      for (const chat of groups.get(separator.id)) appendChat(chat);
     }
 
-    empty.hidden = visible.length > 0;
+    empty.hidden = hasContent;
   }
 
   function updateTimeLabels() {
@@ -1003,16 +1088,19 @@
       "#panel.dragging,#panel.resizing{user-select:none;box-shadow:0 20px 54px rgba(0,0,0,.42)}" +
       ".head{height:46px;display:flex;align-items:center;gap:8px;padding:0 9px 0 12px;cursor:grab;" +
       "border-bottom:1px solid #29313d}.head:active{cursor:grabbing}" +
-      ".brand{font-weight:750;letter-spacing:-.01em;flex:1;min-width:0}.summary{display:flex;align-items:center;gap:5px;white-space:nowrap}" +
-      ".summary[hidden]{display:none}.count-badge{width:22px;height:22px;display:grid;place-items:center;border-radius:50%;font-size:10px;font-weight:850;font-variant-numeric:tabular-nums;line-height:1;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}" +
-      ".count-badge[hidden]{display:none}.count-working{background:#63e6d7;color:#103c37}.count-done{background:#a7f36b;color:#263b12}.count-attention{background:#f0a35a;color:#482508}.count-pending{background:#f472b6;color:#4b1632}" +
+      ".brand{font-weight:750;letter-spacing:-.01em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.summary{display:flex;align-items:center;gap:5px;white-space:nowrap}" +
+      ".summary[hidden]{display:none}.count-badge{width:22px;height:22px;display:grid;place-items:center;border-radius:50%;font-size:10px;font-weight:850;font-variant-numeric:tabular-nums;line-height:1;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}" +
+      ".count-badge[hidden]{display:none}.count-working{background:rgba(99,230,215,.13);color:#63e6d7}.count-done{background:rgba(167,243,107,.13);color:#a7f36b}.count-attention{background:rgba(240,163,90,.14);color:#f0a35a}.count-pending{background:rgba(244,114,182,.13);color:#f472b6}" +
+      ".add-separator{position:relative;width:28px;height:28px;flex:0 0 auto;border:0;border-radius:8px;background:transparent;color:#7f8b9b;cursor:pointer}.add-separator:hover{background:#202731;color:#d9e0e8}" +
+      ".add-separator::before{content:'';position:absolute;left:6px;right:6px;top:10px;height:1px;background:currentColor;box-shadow:0 6px 0 currentColor}.add-separator::after{content:'+';position:absolute;right:2px;bottom:1px;width:11px;height:11px;display:grid;place-items:center;border-radius:50%;background:#12171f;color:currentColor;font:800 10px/1 system-ui}" +
       ".collapse{width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:#aeb8c7;" +
       "font-size:18px;line-height:1;cursor:pointer}.collapse:hover{background:#202731;color:white}" +
       ".list{max-height:min(360px,58vh);min-height:0;overflow:auto;padding:7px}.manual-size{max-height:none}.manual-size .list{max-height:none;flex:1}.manual-size.is-empty .list{display:none}.manual-size.is-empty .empty{margin:auto 0}" +
       ".chat-row{position:relative;display:flex;align-items:center;gap:3px;border-radius:10px;background:transparent}" +
-      ".chat-row:hover,.chat-row.current{background:#1a202a}.chat-row.drag-source{opacity:.42}" +
-      ".chat-row.drop-before::before,.chat-row.drop-after::after{content:'';position:absolute;left:7px;right:7px;height:2px;border-radius:999px;background:#63e6d7}" +
-      ".chat-row.drop-before::before{top:-1px}.chat-row.drop-after::after{bottom:-1px}" +
+      ".chat-row:hover,.chat-row.current{background:#1a202a}.chat-row.drag-source,.section-separator.drag-source{opacity:.42}" +
+      ".chat-row.drop-before::before,.chat-row.drop-after::after,.section-separator.drop-before::before,.section-separator.drop-after::after{content:'';position:absolute;left:7px;right:7px;height:2px;border-radius:999px;background:#63e6d7}" +
+      ".chat-row.drop-before::before,.section-separator.drop-before::before{top:-1px}.chat-row.drop-after::after,.section-separator.drop-after::after{bottom:-1px}" +
+      ".section-separator{position:relative;height:22px;display:flex;align-items:center;gap:6px;padding:0 5px 0 0}.separator-handle{width:17px;align-self:stretch;display:grid;place-items:center;color:#526071;font:700 10px/1 system-ui;cursor:grab;user-select:none;opacity:.38}.section-separator:hover .separator-handle{opacity:.9;color:#8e9bad}.separator-handle:active{cursor:grabbing}.separator-line{height:1px;flex:1;background:#303846}.separator-remove{width:20px;height:20px;border:0;border-radius:6px;background:transparent;color:#687386;font:500 15px/1 system-ui;cursor:pointer;opacity:0}.section-separator:hover .separator-remove,.separator-remove:focus-visible{opacity:.8}.separator-remove:hover{background:#252d38;color:#d9e0e8}" +
       ".drag-handle{width:17px;align-self:stretch;display:grid;place-items:center;color:#526071;font:700 11px/1 system-ui;cursor:grab;user-select:none;opacity:.42}" +
       ".chat-row:hover .drag-handle{opacity:.9;color:#8e9bad}.drag-handle:active{cursor:grabbing}" +
       ".chat-main{min-width:0;flex:1;display:flex;align-items:center;" +
@@ -1039,12 +1127,12 @@
       ".foot{min-height:35px;display:flex;align-items:center;justify-content:center;gap:8px;padding:7px 9px 8px 12px;color:#6f7c8e;text-align:center;font-size:10px;border-top:1px solid #29313d}" +
       ".foot-copy{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.auto-size-button{display:inline-flex;align-items:center;flex:0 0 auto;height:22px;padding:0 7px;border:1px solid #354052;border-radius:7px;background:#171d26;color:#aeb8c7;font:600 10px system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}" +
       ".auto-size-button:hover:not(:disabled){background:#252d38;color:#fff;border-color:#465267}.auto-size-button:disabled{opacity:.38;cursor:default}" +
-      "#panel.collapsed{width:215px}.collapsed .list,.collapsed .empty,.collapsed .foot{display:none}" +
+      "#panel.collapsed{width:215px}.collapsed .list,.collapsed .empty,.collapsed .foot,.collapsed .add-separator{display:none}" +
       ".collapsed .head{border-bottom:0;gap:5px}.collapsed .brand{font-size:0}.collapsed .brand::after{content:'Monitor';font-size:11px}.collapsed .summary{gap:3px}.collapsed .count-badge{width:18px;height:18px;font-size:9px}" +
       "#panel.compact{width:214px}#panel.compact.collapsed{width:214px}" +
       ".compact .head{height:36px;padding:0 6px 0 9px;gap:5px}.compact .brand{font-size:0}.compact .brand::after{content:'Monitor';font-size:11px}" +
-      ".compact .summary{gap:3px}.compact .count-badge{width:18px;height:18px;font-size:9px}.compact .meta,.compact .foot{display:none}" +
-      ".compact .list{padding:3px}.compact .chat-main{padding:5px 4px 5px 3px;gap:7px}" +
+      ".compact .summary{gap:3px}.compact .count-badge{width:18px;height:18px;font-size:9px}.compact .add-separator{width:24px;height:24px}.compact .add-separator::before{left:5px;right:5px}.compact .meta,.compact .foot{display:none}" +
+      ".compact .list{padding:3px}.compact .chat-main{padding:5px 4px 5px 3px;gap:7px}.compact .section-separator{height:18px}.compact .separator-remove{width:18px;height:18px}" +
       ".compact .drag-handle{width:12px;font-size:9px;opacity:.2}.compact .chat-row:hover .drag-handle{opacity:.8}" +
       ".compact .more{width:22px;height:22px;margin-right:2px;opacity:.18;transition:opacity .12s}.compact .chat-row:hover .more,.compact .more:focus-visible{opacity:1}" +
       ".compact .dot{width:8px;height:8px}" +
@@ -1053,10 +1141,10 @@
       ".resize-handle:hover,.resizing .resize-handle{opacity:.86}.compact .resize-handle,.collapsed .resize-handle{display:none}" +
       ":host([data-theme='light']) #panel{color:#1d2836;background:#f7f9fc;border-color:#d5dde8;box-shadow:0 16px 44px rgba(31,43,58,.2)}" +
       ":host([data-theme='light']) #panel.dragging,:host([data-theme='light']) #panel.resizing{box-shadow:0 20px 54px rgba(31,43,58,.26)}" +
-      ":host([data-theme='light']) .head{border-bottom-color:#dce3ec}:host([data-theme='light']) .count-badge{box-shadow:inset 0 0 0 1px rgba(31,43,58,.08)}" +
-      ":host([data-theme='light']) .collapse{color:#647286}:host([data-theme='light']) .collapse:hover{background:#e8edf3;color:#182331}" +
+      ":host([data-theme='light']) .head{border-bottom-color:#dce3ec}:host([data-theme='light']) .count-badge{box-shadow:inset 0 0 0 1px rgba(31,43,58,.06)}:host([data-theme='light']) .count-working{background:rgba(35,143,132,.11);color:#238f84}:host([data-theme='light']) .count-done{background:rgba(90,142,38,.11);color:#5a8e26}:host([data-theme='light']) .count-pending{background:rgba(182,59,125,.1);color:#b63b7d}:host([data-theme='light']) .count-attention{background:rgba(164,91,31,.11);color:#a45b1f}" +
+      ":host([data-theme='light']) .add-separator{color:#6c798b}:host([data-theme='light']) .add-separator:hover{background:#e8edf3;color:#263342}:host([data-theme='light']) .add-separator::after{background:#f7f9fc}:host([data-theme='light']) .collapse{color:#647286}:host([data-theme='light']) .collapse:hover{background:#e8edf3;color:#182331}" +
       ":host([data-theme='light']) .chat-row:hover,:host([data-theme='light']) .chat-row.current{background:#eaf0f6}" +
-      ":host([data-theme='light']) .drag-handle{color:#8b97a7}:host([data-theme='light']) .chat-row:hover .drag-handle{color:#536174}" +
+      ":host([data-theme='light']) .drag-handle,:host([data-theme='light']) .separator-handle{color:#8b97a7}:host([data-theme='light']) .chat-row:hover .drag-handle,:host([data-theme='light']) .section-separator:hover .separator-handle{color:#536174}:host([data-theme='light']) .separator-line{background:#d5dde8}:host([data-theme='light']) .separator-remove{color:#8794a5}:host([data-theme='light']) .separator-remove:hover{background:#e8edf3;color:#263342}" +
       ":host([data-theme='light']) .more{color:#6c798b}:host([data-theme='light']) .more:hover{background:#dfe6ee;color:#182331}" +
       ":host([data-theme='light']) .meta{color:#68778b}:host([data-theme='light']) .pinned .chat-title{color:#17212d}" +
       ":host([data-theme='light']) .floating-menu{border-color:#ced7e2;background:#ffffff;box-shadow:0 10px 26px rgba(31,43,58,.2)}" +
@@ -1098,11 +1186,17 @@
       countBadges[state] = count;
     }
 
+    addSeparatorButton = document.createElement("button");
+    addSeparatorButton.className = "add-separator";
+    addSeparatorButton.type = "button";
+    addSeparatorButton.title = "Add separator";
+    addSeparatorButton.setAttribute("aria-label", "Add separator");
+
     collapseButton = document.createElement("button");
     collapseButton.className = "collapse";
     collapseButton.type = "button";
 
-    header.append(brand, summary, collapseButton);
+    header.append(brand, summary, addSeparatorButton, collapseButton);
 
     list = document.createElement("div");
     list.className = "list";
@@ -1142,6 +1236,11 @@
     shadow.append(style, panel, floatingMenu);
     document.documentElement.appendChild(host);
 
+    addSeparatorButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      sendMessage({ type: "monitor-add-separator" });
+    });
+
     collapseButton.addEventListener("click", () => {
       settings.monitorCollapsed = !settings.monitorCollapsed;
       chrome.storage.local.set({
@@ -1168,19 +1267,19 @@
     setupResize();
 
     list.addEventListener("dragover", (event) => {
-      if (!draggedChatKey) return;
+      const draggedToken = draggedSeparatorId
+        ? "s:" + draggedSeparatorId
+        : draggedChatKey
+          ? "c:" + draggedChatKey
+          : "";
+      if (!draggedToken) return;
+
       const targetRow = event.target instanceof Element
-        ? event.target.closest(".chat-row")
+        ? event.target.closest(".chat-row, .section-separator")
         : null;
       if (!targetRow) return;
-
-      const targetNode = rowNodes.get(Number(targetRow.dataset.tabId));
-      if (!targetNode?.chat ||
-          targetNode.chat.chatKey === draggedChatKey ||
-          targetNode.chat.pinned !== draggedPinned) {
-        clearDropMarkers();
-        return;
-      }
+      const targetToken = layoutTokenForElement(targetRow);
+      if (!targetToken || targetToken === draggedToken) return;
 
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
@@ -1188,23 +1287,28 @@
       for (const node of rowNodes.values()) {
         node.row.classList.remove("drop-before", "drop-after");
       }
+      for (const node of separatorNodes.values()) {
+        node.row.classList.remove("drop-before", "drop-after");
+      }
 
       const rect = targetRow.getBoundingClientRect();
       const before = event.clientY < rect.top + rect.height / 2;
       targetRow.classList.add(before ? "drop-before" : "drop-after");
-      dropTarget = {
-        chat: targetNode.chat,
-        before
-      };
+      dropTarget = { token: targetToken, before };
     });
 
     list.addEventListener("drop", (event) => {
-      if (!draggedChatKey || !dropTarget) return;
+      const draggedToken = draggedSeparatorId
+        ? "s:" + draggedSeparatorId
+        : draggedChatKey
+          ? "c:" + draggedChatKey
+          : "";
+      if (!draggedToken || !dropTarget) return;
       event.preventDefault();
       const target = dropTarget;
-      reorderDraggedChat(target.chat, target.before).finally(() => {
+      persistLayoutMove(draggedToken, target.token, target.before).finally(() => {
         draggedChatKey = null;
-        draggedPinned = null;
+        draggedSeparatorId = null;
         clearDropMarkers();
       });
     });
@@ -1238,6 +1342,7 @@
     const response = await sendMessage({ type: "monitor-get-snapshot" });
     if (response && Array.isArray(response.chats)) {
       chats = response.chats;
+      separators = Array.isArray(response.separators) ? response.separators : [];
       render();
     }
   }
@@ -1255,6 +1360,7 @@
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message?.type === "monitor-snapshot" && Array.isArray(message.chats)) {
       chats = message.chats;
+      separators = Array.isArray(message.separators) ? message.separators : [];
       render();
       return;
     }

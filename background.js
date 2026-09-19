@@ -2,6 +2,7 @@ const chats = new Map();
 
 const PREFS_KEY = "monitorChatPrefs";
 const ORDER_KEY = "monitorChatOrder";
+const SECTIONS_KEY = "monitorSections";
 const HISTORY_KEY = "monitorHistory";
 const HISTORY_LIMIT = 100;
 const HISTORY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -41,6 +42,7 @@ const SOUND_KEY_BY_STATE = {
 
 let chatPrefs = {};
 let chatOrder = [];
+let sections = [];
 let history = [];
 let updateState = {
   lastAttemptAt: 0,
@@ -77,6 +79,7 @@ async function ensureInitialized() {
     const stored = await chrome.storage.local.get({
       [PREFS_KEY]: {},
       [ORDER_KEY]: [],
+      [SECTIONS_KEY]: [],
       [HISTORY_KEY]: [],
       [UPDATE_STATE_KEY]: null,
       [WHATS_NEW_KEY]: null
@@ -86,6 +89,9 @@ async function ensureInitialized() {
       : {};
     chatOrder = Array.isArray(stored[ORDER_KEY])
       ? [...new Set(stored[ORDER_KEY].filter((key) => typeof key === "string" && key))].slice(0, 200)
+      : [];
+    sections = Array.isArray(stored[SECTIONS_KEY])
+      ? [...new Set(stored[SECTIONS_KEY].filter((id) => typeof id === "string" && id))].slice(0, 40)
       : [];
     const cutoff = Date.now() - HISTORY_MAX_AGE_MS;
     history = Array.isArray(stored[HISTORY_KEY])
@@ -297,6 +303,9 @@ function prefsFor(key) {
 function decorate(chat) {
   const prefs = prefsFor(chat.chatKey);
   const pending = prefs.pending === true;
+  const section = typeof prefs.section === "string" && sections.includes(prefs.section)
+    ? prefs.section
+    : "";
   return {
     ...chat,
     state: pending && chat.state === "idle" ? "pending" : chat.state,
@@ -304,6 +313,7 @@ function decorate(chat) {
     pinned: prefs.pinned === true,
     hidden: prefs.hidden === true,
     pending,
+    section,
     displayTitle: (typeof prefs.alias === "string" && prefs.alias.trim())
       ? prefs.alias.trim()
       : chat.title
@@ -326,29 +336,46 @@ function rank(state) {
 
 function snapshot() {
   const manualIndex = new Map(chatOrder.map((key, index) => [key, index]));
+  const sectionIndex = new Map([["", 0], ...sections.map((id, index) => [id, index + 1])]);
+  const segmented = sections.length > 0;
 
   return [...chats.values()]
     .map(decorate)
     .sort((a, b) => {
+      if (segmented) {
+        const sectionOrder = (sectionIndex.get(a.section) ?? 0) - (sectionIndex.get(b.section) ?? 0);
+        if (sectionOrder) return sectionOrder;
+      }
+
       const pinOrder = Number(b.pinned) - Number(a.pinned);
       if (pinOrder) return pinOrder;
 
       const aManual = manualIndex.has(a.chatKey) ? manualIndex.get(a.chatKey) : null;
       const bManual = manualIndex.has(b.chatKey) ? manualIndex.get(b.chatKey) : null;
-
-      if (aManual !== null && bManual !== null && aManual !== bManual) {
-        return aManual - bManual;
+      if (!segmented) {
+        if (aManual !== null && bManual !== null && aManual !== bManual) return aManual - bManual;
+        if (aManual !== null && bManual === null) return -1;
+        if (aManual === null && bManual !== null) return 1;
       }
-      if (aManual !== null && bManual === null) return -1;
-      if (aManual === null && bManual !== null) return 1;
 
       const stateOrder = rank(a.state) - rank(b.state);
       if (stateOrder) return stateOrder;
+
+      if (segmented) {
+        if (aManual !== null && bManual !== null && aManual !== bManual) return aManual - bManual;
+        if (aManual !== null && bManual === null) return -1;
+        if (aManual === null && bManual !== null) return 1;
+      }
+
       if (a.state === "working" && b.state === "working") {
         return (a.startedAt || Infinity) - (b.startedAt || Infinity);
       }
       return (b.updatedAt || 0) - (a.updatedAt || 0);
     });
+}
+
+function separatorSnapshot() {
+  return sections.map((id) => ({ id }));
 }
 
 async function persistHistory() {
@@ -576,7 +603,8 @@ async function broadcast() {
       .filter((tab) => Number.isInteger(tab.id))
       .map((tab) => chrome.tabs.sendMessage(tab.id, {
         type: "monitor-snapshot",
-        chats: data
+        chats: data,
+        separators: separatorSnapshot()
       }))
   );
   await updateBadge();
@@ -673,8 +701,13 @@ async function setChatPreference(chatKey, patch) {
     if (patch.pending === true) next.pending = true;
     else delete next.pending;
   }
+  if (Object.prototype.hasOwnProperty.call(patch, "section")) {
+    const section = typeof patch.section === "string" ? patch.section : "";
+    if (section && sections.includes(section)) next.section = section;
+    else delete next.section;
+  }
 
-  if (!next.alias && !next.pinned && !next.hidden && !next.pending) delete chatPrefs[chatKey];
+  if (!next.alias && !next.pinned && !next.hidden && !next.pending && !next.section) delete chatPrefs[chatKey];
   else chatPrefs[chatKey] = next;
 
   await chrome.storage.local.set({ [PREFS_KEY]: chatPrefs });
@@ -689,7 +722,7 @@ async function clearChatPreferenceField(field) {
     const next = { ...chatPrefs[key] };
     delete next[field];
 
-    if (!next.alias && !next.pinned && !next.hidden && !next.pending) delete chatPrefs[key];
+    if (!next.alias && !next.pinned && !next.hidden && !next.pending && !next.section) delete chatPrefs[key];
     else chatPrefs[key] = next;
   }
 
@@ -718,6 +751,88 @@ async function resetChatOrder() {
   await ensureInitialized();
   chatOrder = [];
   await chrome.storage.local.set({ [ORDER_KEY]: [] });
+  return true;
+}
+
+function createSeparatorId() {
+  if (globalThis.crypto?.randomUUID) return "section:" + crypto.randomUUID();
+  return "section:" + Date.now().toString(36) + ":" + Math.random().toString(36).slice(2, 10);
+}
+
+async function addSeparator() {
+  await ensureInitialized();
+  const id = createSeparatorId();
+  sections = [...sections, id].slice(0, 40);
+  await chrome.storage.local.set({ [SECTIONS_KEY]: sections });
+  return id;
+}
+
+async function removeSeparator(id) {
+  await ensureInitialized();
+  const index = sections.indexOf(id);
+  if (index < 0) return false;
+  const fallback = index > 0 ? sections[index - 1] : "";
+  sections.splice(index, 1);
+
+  for (const key of Object.keys(chatPrefs)) {
+    if (chatPrefs[key]?.section !== id) continue;
+    const next = { ...chatPrefs[key] };
+    if (fallback) next.section = fallback;
+    else delete next.section;
+    if (!next.alias && !next.pinned && !next.hidden && !next.pending && !next.section) delete chatPrefs[key];
+    else chatPrefs[key] = next;
+  }
+
+  await chrome.storage.local.set({
+    [SECTIONS_KEY]: sections,
+    [PREFS_KEY]: chatPrefs
+  });
+  return true;
+}
+
+async function setLayout(tokens) {
+  await ensureInitialized();
+  const input = Array.isArray(tokens) ? tokens : [];
+  const validSections = new Set(sections);
+  const orderedSections = [];
+  const orderedChats = [];
+  let currentSection = "";
+
+  for (const token of input.slice(0, 260)) {
+    if (typeof token !== "string") continue;
+    if (token.startsWith("s:")) {
+      const id = token.slice(2);
+      if (!validSections.has(id) || orderedSections.includes(id)) continue;
+      orderedSections.push(id);
+      currentSection = id;
+      continue;
+    }
+    if (!token.startsWith("c:")) continue;
+    const key = token.slice(2);
+    if (!key || orderedChats.includes(key)) continue;
+    orderedChats.push(key);
+    const next = { ...prefsFor(key) };
+    if (currentSection) next.section = currentSection;
+    else delete next.section;
+    if (!next.alias && !next.pinned && !next.hidden && !next.pending && !next.section) delete chatPrefs[key];
+    else chatPrefs[key] = next;
+  }
+
+  sections = [
+    ...orderedSections,
+    ...sections.filter((id) => !orderedSections.includes(id))
+  ].slice(0, 40);
+  const orderedSet = new Set(orderedChats);
+  chatOrder = [
+    ...orderedChats,
+    ...chatOrder.filter((key) => !orderedSet.has(key))
+  ].slice(0, 200);
+
+  await chrome.storage.local.set({
+    [SECTIONS_KEY]: sections,
+    [PREFS_KEY]: chatPrefs,
+    [ORDER_KEY]: chatOrder
+  });
   return true;
 }
 
@@ -808,8 +923,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === "monitor-get-snapshot") {
     rebuildRegistry()
-      .then(() => sendResponse({ chats: snapshot() }))
-      .catch(() => sendResponse({ chats: snapshot() }));
+      .then(() => sendResponse({ chats: snapshot(), separators: separatorSnapshot() }))
+      .catch(() => sendResponse({ chats: snapshot(), separators: separatorSnapshot() }));
     return true;
   }
 
@@ -843,6 +958,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === "monitor-set-chat-order") {
     setChatOrder(message.chatKeys)
+      .then((ok) => broadcast().then(() => sendResponse({ ok })))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-set-layout") {
+    setLayout(message.tokens)
+      .then((ok) => broadcast().then(() => sendResponse({ ok })))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-add-separator") {
+    addSeparator()
+      .then((id) => broadcast().then(() => sendResponse({ ok: true, id })))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-remove-separator") {
+    removeSeparator(String(message.id || ""))
       .then((ok) => broadcast().then(() => sendResponse({ ok })))
       .catch(() => sendResponse({ ok: false }));
     return true;

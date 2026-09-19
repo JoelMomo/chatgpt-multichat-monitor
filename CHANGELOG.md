@@ -11,7 +11,8 @@
 - Smart ordering now keeps Error, Retry, Attention, unread Done and manual Pending chats above routine states unless the user has created a manual order.
 - Added a persistent manual **Pending** state: right-click an Idle LED to mark/unmark the chat. Pending uses a distinct pink LED and remains local to the extension.
 - Enlarged the invisible right-click target around Idle/Pending LEDs without changing the visible LED size, and gave Pending a slow 4.5-second pulse that respects the animation toggle.
-- Replaced the header's letter-based counters and separate alert badge with compact colored number circles for Working, Done, Pending and Attention; zero-value counters stay hidden.
+- Replaced the header's letter-based counters and separate alert badge with compact number circles for Working, Done, Pending and Attention; their fills are now deliberately low-opacity while the numbers keep the state color, and zero-value counters stay hidden.
+- Added persistent draggable separators. A header control creates a divider, dragging the divider changes group boundaries, and chats continue to smart-sort by state inside each section.
 
 ## 0.3.0 - 2026-09-19
 

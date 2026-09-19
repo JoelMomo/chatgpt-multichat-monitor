@@ -50,7 +50,7 @@
 </p>
 
 <p align="center">
-  <sub>Drag the reorder handle, or use <strong>Move up / Move down</strong>. The order is kept locally.</sub>
+  <sub>Drag the reorder handle, or use <strong>Move up / Move down</strong>. Add draggable separators when you want independent groups; chats inside each group keep smart state ordering.</sub>
 </p>
 
 ### Settings
@@ -93,8 +93,10 @@
 
 - **Auto size + manual resize:** the monitor follows the number of visible chats by default, while a custom size remains available whenever you drag the resize handle. The footer's **Auto size** button returns to chat-driven sizing.
 - **Appearance controls:** choose System, Dark or Light theme and adjust monitor opacity from the popup.
-- **Smart priority order:** unless you create a manual order, chats automatically move by priority: Error → Retry → Attention → Done → Pending → Working → Stopped → Draft → Idle.
+- **Smart priority order:** chats automatically move by priority: Error → Retry → Attention → Done → Pending → Working → Stopped → Draft → Idle. Manual drag order behaves as before without separators; inside separator blocks, state priority remains active.
 - **Pending:** right-click an Idle LED to mark a chat for follow-up. Pending uses a distinct pink LED, pulses much more slowly than Working, and stays marked locally until you clear it. The invisible LED hit target is larger than the visible dot for easier interaction.
+- **Section separators:** add a separator from the monitor header, drag it wherever you want, and the chats inside each resulting block continue to sort by state priority.
+- **Quieter counters:** Working, Done, Pending and Attention counts now use low-opacity tinted circles with the number itself in the state color.
 
 <p align="center">
   <img src="assets/demos/pending.gif" width="430" alt="Real ChatGPT MultiChat Monitor UI showing a slowly pulsing Pending chat">
@@ -114,7 +116,7 @@ ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shar
 - Detects recoverable **Retry needed** states, likely **Needs attention** responses and visible **Errors**.
 - Click any row to focus the correct tab and browser window.
 - Pin, hide or locally rename chats.
-- Without a manual order, chats automatically move by priority so errors, attention states, unread Done and Pending stay near the top; dragging a row switches that chat group to persistent manual order.
+- Without separators, manual drag order behaves as before. When separators are present, each block keeps automatic state-priority sorting while manual order is retained as the tie-breaker within the same state.
 - Right-click an Idle LED to mark that conversation as **Pending**; right-click the pink Pending LED again to clear it.
 - Auto-fitting overlay that follows the visible chats, while still supporting persistent manual resizing, compact mode and collapse.
 - System / Dark / Light themes plus adjustable monitor opacity.
@@ -143,6 +145,7 @@ A normal **Done** keeps only a short late-error grace window for detection; afte
 
 - **Click** a row to switch to that conversation.
 - **Drag `⋮⋮`** to reorder chats.
+- Use the **separator** icon in the header to add a divider, then drag its handle to split or regroup chats. Remove it with the × control on the divider.
 - **Right-click** a row or use **...** for:
   - Set / rename alias
   - Pin / unpin
@@ -151,7 +154,7 @@ A normal **Done** keeps only a short late-error grace window for detection; afte
   - Hide
 - **Reset chat order** returns to automatic smart sorting.
 - Automatic smart sorting prioritizes Error → Retry → Attention → Done → Pending → Working → Stopped → Draft → Idle.
-- Pinned chats stay in the top group.
+- Pinned chats stay at the top of their section, or the overall list when no separators are used.
 
 ## Sound alerts
 
@@ -280,6 +283,7 @@ Stored data is limited to:
 - Extension settings
 - Local aliases / pin / hidden preferences
 - Manual chat order
+- Separator positions and per-chat section assignment
 - Recent activity metadata
 - Update-check timestamps, latest known release version and dismissed-version state
 - One-time What's new acknowledgement state
