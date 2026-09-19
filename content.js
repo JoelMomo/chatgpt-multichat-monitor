@@ -600,12 +600,12 @@
 
     const copy = document.createElement("span");
     copy.className = "copy";
+    copy.draggable = true;
+    copy.title = "Drag to reorder";
+    copy.setAttribute("aria-label", "Drag chat to reorder");
 
     const title = document.createElement("span");
     title.className = "chat-title";
-    title.draggable = true;
-    title.title = "Drag to reorder";
-    title.setAttribute("aria-label", "Drag chat to reorder");
 
     const meta = document.createElement("span");
     meta.className = "meta";
@@ -631,7 +631,7 @@
       chat: null
     };
 
-    title.addEventListener("dragstart", (event) => {
+    copy.addEventListener("dragstart", (event) => {
       if (!node.chat) {
         event.preventDefault();
         return;
@@ -648,7 +648,7 @@
       }
     });
 
-    title.addEventListener("dragend", () => {
+    copy.addEventListener("dragend", () => {
       draggedChatKey = null;
       clearDropMarkers();
     });
@@ -1104,8 +1104,8 @@
       ".state-attention .dot{background:#ff914d;box-shadow:0 0 0 3px rgba(255,145,77,.08)}" +
       ".state-error .dot{background:#ee7070}.state-draft .dot{background:#a78bfa;box-shadow:0 0 0 3px rgba(167,139,250,.07)}" +
       ".state-pending .dot{background:#f472b6;box-shadow:0 0 0 3px rgba(244,114,182,.08),0 0 9px rgba(244,114,182,.18);animation:pendingpulse 4.5s ease-in-out infinite}" +
-      ".copy{min-width:0;display:flex;flex-direction:column;gap:1px;flex:1}" +
-      ".chat-title{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650;cursor:grab;user-select:none}.chat-title:active{cursor:grabbing}" +
+      ".copy{min-width:0;display:flex;flex-direction:column;justify-content:center;gap:1px;flex:1;align-self:stretch;margin:-9px 0;padding:9px 0;cursor:grab;user-select:none}.copy:active{cursor:grabbing}" +
+      ".chat-title{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}" +
       ".meta{color:#8e9bad;font-size:11px}.pinned .chat-title{color:#fff}" +
       ".floating-menu{position:fixed;z-index:2147483647;width:144px;padding:5px;border:1px solid #384250;" +
       "border-radius:9px;background:#171d26;box-shadow:0 10px 26px rgba(0,0,0,.4);pointer-events:auto}" +
@@ -1121,7 +1121,7 @@
       "#panel.compact{width:214px}#panel.compact.collapsed{width:214px}" +
       ".compact .head{height:36px;padding:0 6px 0 9px;gap:5px}.compact .brand{font-size:0}.compact .brand::after{content:'Monitor';font-size:11px}" +
       ".compact .summary{gap:3px}.compact .count-badge{width:18px;height:18px;font-size:9px}.compact .add-separator{width:22px;height:22px}.compact .add-separator::before{left:6px;right:6px;top:7px;box-shadow:0 5px 0 currentColor}.compact .add-separator::after{right:2px;bottom:1px}.compact .meta,.compact .foot{display:none}" +
-      ".compact .list{padding:3px}.compact .chat-main{padding:5px 4px 5px 7px;gap:7px}.compact .section-separator{height:18px}.compact .separator-remove{width:18px;height:18px}" +
+      ".compact .list{padding:3px}.compact .chat-main{padding:5px 4px 5px 7px;gap:7px}.compact .copy{margin:-5px 0;padding:5px 0}.compact .section-separator{height:18px}.compact .separator-remove{width:18px;height:18px}" +
 
       ".compact .more{width:22px;height:22px;margin-right:2px;opacity:.18;transition:opacity .12s}.compact .chat-row:hover .more,.compact .more:focus-visible{opacity:1}" +
       ".compact .dot{width:8px;height:8px}" +
@@ -1199,7 +1199,7 @@
 
     const footCopy = document.createElement("span");
     footCopy.className = "foot-copy";
-    footCopy.textContent = "Click to switch · drag a chat name to reorder";
+    footCopy.textContent = "Click to switch · drag the chat text to reorder";
 
     autoSizeButton = document.createElement("button");
     autoSizeButton.className = "auto-size-button";
