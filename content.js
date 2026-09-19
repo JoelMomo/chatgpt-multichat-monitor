@@ -46,8 +46,8 @@
   let header = null;
   let list = null;
   let empty = null;
-  let badge = null;
   let summary = null;
+  let countBadges = null;
   let collapseButton = null;
   let resizeHandle = null;
   let autoSizeButton = null;
@@ -698,14 +698,29 @@
   function updateHeaderSummary(visible) {
     const working = chats.filter((chat) => !chat.hidden && chat.state === "working").length;
     const attention = chats.filter((chat) =>
-      !chat.hidden && (chat.state === "retry" || chat.state === "attention" || chat.state === "error" || chat.state === "pending")
+      !chat.hidden && (chat.state === "retry" || chat.state === "attention" || chat.state === "error")
     ).length;
+    const pending = chats.filter((chat) => !chat.hidden && chat.state === "pending").length;
     const done = visible.filter((chat) => chat.state === "finished").length;
 
-    badge.textContent = attention > 0 ? "!" : String(working || 0);
-    badge.classList.toggle("attention", attention > 0);
-    badge.classList.toggle("active", attention === 0 && working > 0);
-    summary.textContent = "W " + working + "  D " + done + "  ! " + attention;
+    const counts = {
+      working,
+      done,
+      attention,
+      pending
+    };
+
+    let visibleCount = 0;
+    for (const [state, element] of Object.entries(countBadges)) {
+      const value = counts[state] || 0;
+      element.textContent = String(value);
+      element.hidden = value === 0;
+      if (value > 0) visibleCount += 1;
+      element.setAttribute("aria-label", element.dataset.label + ": " + value);
+      element.title = element.dataset.label + ": " + value;
+    }
+
+    summary.hidden = visibleCount === 0;
   }
 
   function maybeFlash(node, chat) {
@@ -988,10 +1003,9 @@
       "#panel.dragging,#panel.resizing{user-select:none;box-shadow:0 20px 54px rgba(0,0,0,.42)}" +
       ".head{height:46px;display:flex;align-items:center;gap:8px;padding:0 9px 0 12px;cursor:grab;" +
       "border-bottom:1px solid #29313d}.head:active{cursor:grabbing}" +
-      ".brand{font-weight:750;letter-spacing:-.01em;flex:1}.summary{color:#7f8b9b;font-size:10px;white-space:pre}" +
-      ".badge{min-width:22px;height:22px;padding:0 6px;display:grid;place-items:center;border-radius:999px;" +
-      "background:#303846;color:#aeb8c7;font-size:11px;font-weight:800}" +
-      ".badge.active{background:#194d47;color:#73f0df}.badge.attention{background:#56351d;color:#ffc984}" +
+      ".brand{font-weight:750;letter-spacing:-.01em;flex:1;min-width:0}.summary{display:flex;align-items:center;gap:5px;white-space:nowrap}" +
+      ".summary[hidden]{display:none}.count-badge{width:22px;height:22px;display:grid;place-items:center;border-radius:50%;font-size:10px;font-weight:850;font-variant-numeric:tabular-nums;line-height:1;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}" +
+      ".count-badge[hidden]{display:none}.count-working{background:#63e6d7;color:#103c37}.count-done{background:#a7f36b;color:#263b12}.count-attention{background:#f0a35a;color:#482508}.count-pending{background:#f472b6;color:#4b1632}" +
       ".collapse{width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:#aeb8c7;" +
       "font-size:18px;line-height:1;cursor:pointer}.collapse:hover{background:#202731;color:white}" +
       ".list{max-height:min(360px,58vh);min-height:0;overflow:auto;padding:7px}.manual-size{max-height:none}.manual-size .list{max-height:none;flex:1}.manual-size.is-empty .list{display:none}.manual-size.is-empty .empty{margin:auto 0}" +
@@ -1025,10 +1039,11 @@
       ".foot{min-height:35px;display:flex;align-items:center;justify-content:center;gap:8px;padding:7px 9px 8px 12px;color:#6f7c8e;text-align:center;font-size:10px;border-top:1px solid #29313d}" +
       ".foot-copy{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.auto-size-button{display:inline-flex;align-items:center;flex:0 0 auto;height:22px;padding:0 7px;border:1px solid #354052;border-radius:7px;background:#171d26;color:#aeb8c7;font:600 10px system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}" +
       ".auto-size-button:hover:not(:disabled){background:#252d38;color:#fff;border-color:#465267}.auto-size-button:disabled{opacity:.38;cursor:default}" +
-      "#panel.collapsed{width:215px}.collapsed .list,.collapsed .empty,.collapsed .foot,.collapsed .summary{display:none}" +
-      ".collapsed .head{border-bottom:0}#panel.compact{width:214px}#panel.compact.collapsed{width:174px}" +
-      ".compact .head{height:36px;padding:0 6px 0 9px}.compact .brand{font-size:0}.compact .brand::after{content:'Monitor';font-size:11px}" +
-      ".compact .summary,.compact .meta,.compact .foot{display:none}" +
+      "#panel.collapsed{width:215px}.collapsed .list,.collapsed .empty,.collapsed .foot{display:none}" +
+      ".collapsed .head{border-bottom:0;gap:5px}.collapsed .brand{font-size:0}.collapsed .brand::after{content:'Monitor';font-size:11px}.collapsed .summary{gap:3px}.collapsed .count-badge{width:18px;height:18px;font-size:9px}" +
+      "#panel.compact{width:214px}#panel.compact.collapsed{width:214px}" +
+      ".compact .head{height:36px;padding:0 6px 0 9px;gap:5px}.compact .brand{font-size:0}.compact .brand::after{content:'Monitor';font-size:11px}" +
+      ".compact .summary{gap:3px}.compact .count-badge{width:18px;height:18px;font-size:9px}.compact .meta,.compact .foot{display:none}" +
       ".compact .list{padding:3px}.compact .chat-main{padding:5px 4px 5px 3px;gap:7px}" +
       ".compact .drag-handle{width:12px;font-size:9px;opacity:.2}.compact .chat-row:hover .drag-handle{opacity:.8}" +
       ".compact .more{width:22px;height:22px;margin-right:2px;opacity:.18;transition:opacity .12s}.compact .chat-row:hover .more,.compact .more:focus-visible{opacity:1}" +
@@ -1038,8 +1053,7 @@
       ".resize-handle:hover,.resizing .resize-handle{opacity:.86}.compact .resize-handle,.collapsed .resize-handle{display:none}" +
       ":host([data-theme='light']) #panel{color:#1d2836;background:#f7f9fc;border-color:#d5dde8;box-shadow:0 16px 44px rgba(31,43,58,.2)}" +
       ":host([data-theme='light']) #panel.dragging,:host([data-theme='light']) #panel.resizing{box-shadow:0 20px 54px rgba(31,43,58,.26)}" +
-      ":host([data-theme='light']) .head{border-bottom-color:#dce3ec}:host([data-theme='light']) .summary{color:#667488}" +
-      ":host([data-theme='light']) .badge{background:#e5eaf0;color:#536174}:host([data-theme='light']) .badge.active{background:#d8f6f1;color:#176b63}:host([data-theme='light']) .badge.attention{background:#fff0df;color:#9a571d}" +
+      ":host([data-theme='light']) .head{border-bottom-color:#dce3ec}:host([data-theme='light']) .count-badge{box-shadow:inset 0 0 0 1px rgba(31,43,58,.08)}" +
       ":host([data-theme='light']) .collapse{color:#647286}:host([data-theme='light']) .collapse:hover{background:#e8edf3;color:#182331}" +
       ":host([data-theme='light']) .chat-row:hover,:host([data-theme='light']) .chat-row.current{background:#eaf0f6}" +
       ":host([data-theme='light']) .drag-handle{color:#8b97a7}:host([data-theme='light']) .chat-row:hover .drag-handle{color:#536174}" +
@@ -1066,15 +1080,29 @@
 
     summary = document.createElement("div");
     summary.className = "summary";
+    summary.setAttribute("role", "status");
+    summary.setAttribute("aria-label", "Chat status counts");
 
-    badge = document.createElement("div");
-    badge.className = "badge";
+    countBadges = {};
+    for (const [state, label] of [
+      ["working", "Working"],
+      ["done", "Done"],
+      ["attention", "Needs attention"],
+      ["pending", "Pending"]
+    ]) {
+      const count = document.createElement("span");
+      count.className = "count-badge count-" + state;
+      count.dataset.label = label;
+      count.hidden = true;
+      summary.append(count);
+      countBadges[state] = count;
+    }
 
     collapseButton = document.createElement("button");
     collapseButton.className = "collapse";
     collapseButton.type = "button";
 
-    header.append(brand, summary, badge, collapseButton);
+    header.append(brand, summary, collapseButton);
 
     list = document.createElement("div");
     list.className = "list";
