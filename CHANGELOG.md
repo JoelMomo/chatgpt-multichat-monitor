@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Made unread **Done** much easier to distinguish from **Working**: Done now uses a brighter lime LED with a subtle glow and left-edge accent.
 - Added a lightweight update checker for manual GitHub installs. It checks stable releases at most once every 24 hours and stores only version/timestamp metadata.
 - Added an **Update available** popup card with **View release** and per-version **Dismiss** actions.
 - Added a low-priority **↑** extension badge for available updates; chat attention and Working badges still take priority.

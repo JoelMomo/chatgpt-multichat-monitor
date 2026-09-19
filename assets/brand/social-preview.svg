@@ -4,7 +4,7 @@
       <stop stop-color="#0B1017"/>
       <stop offset="1" stop-color="#111A25"/>
     </linearGradient>
-    <linearGradient id="accent" x1="112" y1="128" x2="970" y2="510" gradientUnits="userSpaceOnUse">
+    <linearGradient id="accent" x1="90" y1="96" x2="1080" y2="550" gradientUnits="userSpaceOnUse">
       <stop stop-color="#63E6D7"/>
       <stop offset="1" stop-color="#56B9FF"/>
     </linearGradient>
@@ -12,6 +12,7 @@
       <feGaussianBlur stdDeviation="36"/>
     </filter>
   </defs>
+
   <rect width="1280" height="640" fill="url(#bg)"/>
   <circle cx="1080" cy="94" r="190" fill="#56B9FF" opacity=".08" filter="url(#soft)"/>
   <circle cx="210" cy="566" r="220" fill="#63E6D7" opacity=".07" filter="url(#soft)"/>
@@ -24,7 +25,7 @@
     <circle cx="39" cy="45.5" r="3.3" fill="#63E6D7"/>
     <rect x="47" y="43" width="30" height="4" rx="2" fill="#273445"/>
     <rect x="31" y="58" width="66" height="17" rx="8.5" fill="#F2F6FA"/>
-    <circle cx="39" cy="66.5" r="3.3" fill="#72D99B"/>
+    <circle cx="39" cy="66.5" r="3.3" fill="#A7F36B"/>
     <rect x="47" y="64" width="26" height="4" rx="2" fill="#273445"/>
     <rect x="31" y="79" width="66" height="17" rx="8.5" fill="#F2F6FA"/>
     <circle cx="39" cy="87.5" r="3.3" fill="#FFD65A"/>
@@ -39,9 +40,11 @@
     <rect width="145" height="39" rx="19.5" fill="#18222D" stroke="#2E3A49"/>
     <circle cx="21" cy="19.5" r="5" fill="#63E6D7"/>
     <text x="36" y="26" fill="#CBD5E1" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="600">Multi-tab</text>
+
     <rect x="158" width="120" height="39" rx="19.5" fill="#18222D" stroke="#2E3A49"/>
-    <circle cx="179" cy="19.5" r="5" fill="#72D99B"/>
+    <circle cx="179" cy="19.5" r="5" fill="#A7F36B"/>
     <text x="194" y="26" fill="#CBD5E1" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="600">Local</text>
+
     <rect x="291" width="150" height="39" rx="19.5" fill="#18222D" stroke="#2E3A49"/>
     <circle cx="312" cy="19.5" r="5" fill="#56B9FF"/>
     <text x="327" y="26" fill="#CBD5E1" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="600">Lightweight</text>
@@ -60,29 +63,43 @@
       <circle cx="30" cy="33" r="6" fill="#63E6D7"/>
       <text x="52" y="29" fill="#F5F7FA" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="650">Frontend refactor</text>
       <text x="52" y="48" fill="#8E9BAD" font-family="Segoe UI,Arial,sans-serif" font-size="12">Working 3:42</text>
-      <text x="349" y="39" fill="#7F8B9B" font-family="Segoe UI,Arial,sans-serif" font-size="20" font-weight="800">•••</text>
+      <g fill="#7F8B9B">
+        <circle cx="347" cy="33" r="2"/><circle cx="354" cy="33" r="2"/><circle cx="361" cy="33" r="2"/>
+      </g>
     </g>
+
     <g transform="translate(18 160)">
       <rect width="384" height="66" rx="15" fill="#161C24"/>
-      <circle cx="30" cy="33" r="6" fill="#72D99B"/>
+      <rect width="3" height="66" rx="1.5" fill="#A7F36B" opacity=".55"/>
+      <circle cx="30" cy="33" r="6" fill="#A7F36B"/>
+      <circle cx="30" cy="33" r="11" fill="none" stroke="#A7F36B" stroke-opacity=".14" stroke-width="4"/>
       <text x="52" y="29" fill="#F5F7FA" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="650">Release checklist</text>
       <text x="52" y="48" fill="#8E9BAD" font-family="Segoe UI,Arial,sans-serif" font-size="12">Done</text>
-      <text x="349" y="39" fill="#7F8B9B" font-family="Segoe UI,Arial,sans-serif" font-size="20" font-weight="800">•••</text>
+      <g fill="#7F8B9B">
+        <circle cx="347" cy="33" r="2"/><circle cx="354" cy="33" r="2"/><circle cx="361" cy="33" r="2"/>
+      </g>
     </g>
+
     <g transform="translate(18 234)">
       <rect width="384" height="66" rx="15" fill="#161C24"/>
       <circle cx="30" cy="33" r="6" fill="#FFD65A"/>
       <text x="52" y="29" fill="#F5F7FA" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="650">API migration</text>
       <text x="52" y="48" fill="#8E9BAD" font-family="Segoe UI,Arial,sans-serif" font-size="12">Retry needed</text>
-      <text x="349" y="39" fill="#7F8B9B" font-family="Segoe UI,Arial,sans-serif" font-size="20" font-weight="800">•••</text>
+      <g fill="#7F8B9B">
+        <circle cx="347" cy="33" r="2"/><circle cx="354" cy="33" r="2"/><circle cx="361" cy="33" r="2"/>
+      </g>
     </g>
+
     <g transform="translate(18 308)">
       <rect width="384" height="66" rx="15" fill="#161C24"/>
       <circle cx="30" cy="33" r="6" fill="#FF914D"/>
       <text x="52" y="29" fill="#F5F7FA" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="650">Research notes</text>
       <text x="52" y="48" fill="#8E9BAD" font-family="Segoe UI,Arial,sans-serif" font-size="12">Needs attention</text>
-      <text x="349" y="39" fill="#7F8B9B" font-family="Segoe UI,Arial,sans-serif" font-size="20" font-weight="800">•••</text>
+      <g fill="#7F8B9B">
+        <circle cx="347" cy="33" r="2"/><circle cx="354" cy="33" r="2"/><circle cx="361" cy="33" r="2"/>
+      </g>
     </g>
-    <text x="210" y="424" text-anchor="middle" fill="#6F7C8E" font-family="Segoe UI,Arial,sans-serif" font-size="12">Click to switch · drag ⋮⋮ to reorder</text>
+
+    <text x="210" y="424" text-anchor="middle" fill="#6F7C8E" font-family="Segoe UI,Arial,sans-serif" font-size="12">Click to switch - drag handle to reorder</text>
   </g>
 </svg>

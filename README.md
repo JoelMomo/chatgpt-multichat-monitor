@@ -86,7 +86,7 @@
 </p>
 
 <p align="center">
-  <sub>The cyan <strong>Working</strong> LED pulses while ChatGPT is generating, then switches to green <strong>Done</strong>.</sub>
+  <sub>The cyan <strong>Working</strong> LED pulses while ChatGPT is generating, then switches to lime <strong>Done</strong>.</sub>
 </p>
 
 ## What it does
@@ -94,7 +94,7 @@
 ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shares the status of your other open ChatGPT tabs.
 
 - Live **Working** state with elapsed time.
-- **Done** stays green until you actually visit that chat.
+- **Done** stays lime until you actually visit that chat.
 - A non-empty prompt composer is shown as **Draft** instead of Idle; active generation still remains **Working** while you prepare the next prompt.
 - Detects recoverable **Retry needed** states, likely **Needs attention** responses and visible **Errors**.
 - Click any row to focus the correct tab and browser window.
@@ -111,7 +111,7 @@ ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shar
 | State | LED | Meaning |
 | --- | --- | --- |
 | **Working** | Cyan, pulsing | ChatGPT is currently generating. |
-| **Done** | Green | Generation finished normally and has not been visited yet. |
+| **Done** | Lime | Generation finished normally and has not been visited yet. |
 | **Retry needed** | Yellow | A recoverable timeout, delivery/network problem or Retry action was detected. |
 | **Needs attention** | Orange | The response likely ended with a question or request for user input. |
 | **Error** | Red | A visible non-recoverable ChatGPT error was detected. |
@@ -119,7 +119,7 @@ ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shar
 | **Draft** | Violet | The prompt box contains unsent text and no higher-priority state is active. |
 | **Idle** | Gray | No current or unread activity. Hidden by default unless requested or pinned. |
 
-A normal **Done** keeps only a short late-error grace window for detection; after that it remains green without continuing error scans until you visit it.
+A normal **Done** keeps only a short late-error grace window for detection; after that it remains lime without continuing error scans until you visit it.
 
 ## Multi-chat controls
 

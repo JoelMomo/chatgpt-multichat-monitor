@@ -862,7 +862,7 @@
       "font-weight:800;cursor:pointer}.more:hover{background:#28303b;color:white}" +
       ".dot{width:9px;height:9px;border-radius:50%;background:#687386;flex:0 0 auto}" +
       ".state-working .dot{background:#63e6d7;box-shadow:0 0 0 3px rgba(99,230,215,.09);animation:workingpulse 1.35s ease-in-out infinite}" +
-      ".state-finished .dot{background:#72d99b}.state-interrupted .dot{background:#f2bd68}" +
+      ".state-finished .dot{background:#a7f36b;box-shadow:0 0 0 3px rgba(167,243,107,.1),0 0 10px rgba(167,243,107,.24)}.chat-row.state-finished{box-shadow:inset 2px 0 0 rgba(167,243,107,.48)}.state-interrupted .dot{background:#f2bd68}" +
       ".state-retry .dot{background:#ffd65a;box-shadow:0 0 0 3px rgba(255,214,90,.08)}" +
       ".state-attention .dot{background:#ff914d;box-shadow:0 0 0 3px rgba(255,145,77,.08)}" +
       ".state-error .dot{background:#ee7070}.state-draft .dot{background:#a78bfa;box-shadow:0 0 0 3px rgba(167,139,250,.07)}" +
