@@ -842,7 +842,20 @@ async function rebuildRegistry() {
     if (!Number.isInteger(tab.id)) return;
 
     if (tab.discarded) {
-      upsertState({ state: "idle", title: tab.title, url: tab.url }, tab);
+      const chatKey = chatKeyFromUrl(tab.url, tab.id);
+      const run = activeRunFor(chatKey);
+      if (run) {
+        upsertState({
+          state: "working",
+          title: tab.title,
+          url: tab.url,
+          startedAt: run.startedAt,
+          workPhase: run.workPhase,
+          phaseStartedAt: run.phaseStartedAt
+        }, tab);
+      } else {
+        upsertState({ state: "idle", title: tab.title, url: tab.url }, tab);
+      }
       return;
     }
 
@@ -851,7 +864,20 @@ async function rebuildRegistry() {
       if (local && local.initializing !== true) upsertState(local, tab);
     } catch {
       if (!chats.has(tab.id)) {
-        upsertState({ state: "idle", title: tab.title, url: tab.url }, tab);
+        const chatKey = chatKeyFromUrl(tab.url, tab.id);
+        const run = activeRunFor(chatKey);
+        if (run) {
+          upsertState({
+            state: "working",
+            title: tab.title,
+            url: tab.url,
+            startedAt: run.startedAt,
+            workPhase: run.workPhase,
+            phaseStartedAt: run.phaseStartedAt
+          }, tab);
+        } else {
+          upsertState({ state: "idle", title: tab.title, url: tab.url }, tab);
+        }
       }
     }
   }));
@@ -1546,7 +1572,18 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   cancelPendingDoneSound(tabId);
+  const removed = chats.get(tabId);
   if (!chats.delete(tabId)) return;
+
+  if (removed?.chatKey) {
+    const stillOpen = [...chats.values()].some((chat) =>
+      chat.chatKey === removed.chatKey && chat.state === "working"
+    );
+    if (!stillOpen && clearActiveRun(removed.chatKey)) {
+      queueActiveRunsPersist().catch(() => {});
+    }
+  }
+
   broadcast().catch(() => {});
 });
 
@@ -1568,11 +1605,25 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (!previous) return;
 
   if (discardedNow || isLoading) {
-    upsertState({
-      state: "idle",
-      title: changeInfo.title || tab.title || previous.title,
-      url: changeInfo.url || tab.url || previous.url
-    }, tab);
+    const nextUrl = changeInfo.url || tab.url || previous.url;
+    const nextChatKey = chatKeyFromUrl(nextUrl, tabId);
+
+    if (nextChatKey === previous.chatKey) {
+      chats.set(tabId, {
+        ...previous,
+        windowId: tab.windowId,
+        title: cleanTitle(changeInfo.title || tab.title || previous.title),
+        url: nextUrl
+      });
+    } else {
+      if (clearActiveRun(previous.chatKey)) queueActiveRunsPersist().catch(() => {});
+      upsertState({
+        state: "idle",
+        title: changeInfo.title || tab.title || previous.title,
+        url: nextUrl
+      }, tab);
+    }
+
     broadcast().catch(() => {});
     return;
   }
