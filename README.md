@@ -95,13 +95,13 @@
 - **Appearance controls:** choose System, Dark or Light theme and adjust monitor opacity from the popup.
 - **Smart priority order:** chats automatically move by priority: Error → Retry → Attention → Done → Pending → Working → Stopped → Draft → Idle. Manual drag order behaves as before without separators; inside separator blocks, state priority remains active.
 - **Pending:** right-click an Idle LED to mark a chat for follow-up. Pending uses a distinct pink LED, pulses much more slowly than Working, and stays marked locally until you clear it. The invisible LED hit target is larger than the visible dot for easier interaction.
-- **Automatic project groups:** **By project** is now the default grouping mode. The extension detects ChatGPT project routes and sidebar links locally, creates project headers automatically and keeps **Other chats / No project** as safe fallbacks when membership is unavailable or absent.
+- **Automatic project groups:** **By project** is now the default grouping mode. The extension detects ChatGPT project routes and sidebar links locally, creates project headers automatically and keeps **Other chats / No project** as safe fallbacks when membership is unavailable or absent. Project headers can now be dragged to persist a custom project order.
 - **Grouping modes:** choose **By project**, **Manual** or **None** in the popup. Manual separators are preserved when you temporarily switch modes.
 - **Named, collapsible sections:** manual separators can be named with a double-click or their section menu, use a quiet `──── NAME ────` treatment, and can be collapsed. Automatic project groups can be collapsed too.
 - **Section controls:** manual section menus include rename, clear name, collapse/expand, move up/down and delete. Collapsed sections show their chat count.
 - **Section separators:** in Manual mode, add a separator from the monitor header and drag the separator itself wherever you want. Chats inside each resulting block continue to sort by state priority. Dragging highlights the destination section and empty/collapsed sections expose a temporary **Drop here** target.
 - **Quieter counters:** Working, Done, Pending and Attention counts use low-opacity tinted circles with the number itself in the state color.
-- **Safer layout editing:** chat/section layout changes show a short **Undo** action. **Reset layout** removes manual separators, assignments, collapse state and manual ordering while keeping aliases, pins, Pending and other chat preferences.
+- **Safer layout editing:** a header **lock** toggles between open/closed states and prevents accidental layout edits while locked. The short-lived **Undo** action now appears as a compact header control instead of covering the monitor. **Reset layout** clears manual separators, project/manual ordering, assignments and collapse state while keeping aliases, pins, Pending and other chat preferences.
 - **Version at a glance:** the normal monitor footer shows the current extension version; compact mode stays visually minimal and hides it.
 
 <p align="center">
@@ -123,7 +123,7 @@ ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shar
 - Click any row to focus the correct tab and browser window.
 - Pin, hide or locally rename chats.
 - Chats are grouped by their ChatGPT project by default. Project membership is detected from the current project URL, canonical URL or matching ChatGPT sidebar link; no project API or external service is used.
-- In **By project**, each project is a named collapsible section and chats keep state-priority ordering inside it. Project groups are automatic, so dragging a chat cannot pretend to move it to another ChatGPT project.
+- In **By project**, each project is a named collapsible section and chats keep state-priority ordering inside it. Drag project headers to choose their monitor order; dragging an individual chat still cannot pretend to move it to another ChatGPT project.
 - In **Manual**, custom named separators and chat assignments are persistent. Inside each manual section, state priority remains active and manual order is the tie-breaker within the same state.
 - In **None**, section headers are hidden and the existing global manual order remains available. Switching modes does not erase the stored manual sections.
 - Right-click an Idle LED to mark that conversation as **Pending**; right-click the pink Pending LED again to clear it.
@@ -155,7 +155,10 @@ A normal **Done** keeps only a short late-error grace window for detection; afte
 - **Click** a row to switch to that conversation.
 - In **Manual** or **None**, **drag anywhere in the chat text area** (name or status line) to reorder. Manual mode also lets you move a conversation between sections.
 - In **Manual**, use the **separator** icon in the header to add a divider, then drag the separator itself to reorganize sections. Double-click it to name it.
+- Drag a **project header** to reorder projects in the monitor. This changes only the monitor order, never the actual ChatGPT project.
 - Click a named section caption to collapse/expand it. Project section captions work the same way; project names themselves come from ChatGPT and are not renamed by the extension.
+- Use the header **open/closed lock** to protect the layout. While locked, drag/reorder, section editing/collapse, separator creation, panel movement and resizing are disabled; normal chat actions remain available.
+- After an unlocked layout change, a small **↶ Undo** control appears temporarily in the header.
 - **Right-click a section** or use its **...** menu for section actions. Manual sections support rename, clear name, collapse/expand, move up/down and delete.
 - **Right-click** a chat row or use **...** for:
   - Set / rename alias
