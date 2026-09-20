@@ -296,8 +296,8 @@
       return "Searching";
     }
 
-    if (/\b(ejecutando|usando\s+herramientas?|consultando|executing|running|using\s+tools?|reading|opening|fetching|exécutant|utilisant|ausführend|eseguendo|usando\s+strumenti?|executando|usando\s+ferramentas?)\b/i.test(text)) {
-      if (/\b(ejecutando|usando\s+herramientas?|consultando)\b/i.test(text)) return "Ejecutando";
+    if (/\b(ejecutando|usando\s+herramientas?|consultando|leyendo|abriendo|escribiendo|editando|creando|descargando|subiendo|executing|running|using\s+tools?|reading|opening|fetching|writing|editing|creating|downloading|uploading|exécutant|utilisant|ausführend|eseguendo|usando\s+strumenti?|executando|usando\s+ferramentas?)\b/i.test(text)) {
+      if (/\b(ejecutando|usando\s+herramientas?|consultando|leyendo|abriendo|escribiendo|editando|creando|descargando|subiendo)\b/i.test(text)) return "Ejecutando";
       if (/\b(exécutant|utilisant)\b/i.test(text)) return "Exécution";
       if (/\b(ausführend)\b/i.test(text)) return "Ausführung";
       if (/\b(eseguendo|usando\s+strumenti?)\b/i.test(text)) return "Esecuzione";
