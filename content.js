@@ -46,6 +46,8 @@
   let lastFallbackScanAt = 0;
   let lastErrorScanAt = 0;
   let lastWorkPhaseSeenAt = 0;
+  let activeRunRestoreGraceUntil = 0;
+  let bootstrapped = false;
   let manualStopUntil = 0;
   let lastUrl = location.href;
   let lastTitle = document.title;
@@ -588,9 +590,16 @@
 
     const working = detectWorking(allowFallback);
 
+    if (!working &&
+        localState.state === "working" &&
+        activeRunRestoreGraceUntil > Date.now()) {
+      return;
+    }
+
     // Active generation wins over stale retry/error UI left behind by ChatGPT.
     if (working) {
       clearFinishTimer();
+      activeRunRestoreGraceUntil = 0;
       const now = Date.now();
       const detectedPhase = detectWorkPhase();
 
@@ -750,6 +759,29 @@
     } catch {
       return Promise.resolve(null);
     }
+  }
+
+  async function hydrateActiveRun() {
+    const response = await sendMessage({
+      type: "monitor-get-active-run",
+      url: location.href
+    });
+    const run = response?.run;
+    if (!run || !Number.isFinite(Number(run.startedAt))) return false;
+
+    localState = {
+      state: "working",
+      startedAt: Number(run.startedAt),
+      finishedAt: null,
+      workPhase: String(run.workPhase || ""),
+      phaseStartedAt: Number.isFinite(Number(run.phaseStartedAt))
+        ? Number(run.phaseStartedAt)
+        : null,
+      updatedAt: Date.now()
+    };
+    lastWorkPhaseSeenAt = localState.workPhase ? Date.now() : 0;
+    activeRunRestoreGraceUntil = Date.now() + 8000;
+    return true;
   }
 
   function activateChat(tabId) {
@@ -2297,6 +2329,10 @@
     }
 
     if (message?.type === "monitor-get-local-state") {
+      if (!bootstrapped) {
+        sendResponse({ initializing: true });
+        return true;
+      }
       const project = refreshProjectInfo(false);
       sendResponse({
         title: document.title,
@@ -2430,9 +2466,11 @@
 
   (async () => {
     await loadSettings();
+    await hydrateActiveRun();
     buildOverlay();
     refreshProjectInfo(false);
     evaluate({ allowFallback: true });
+    bootstrapped = true;
     sendCurrentState();
     await requestSnapshot();
   })();
