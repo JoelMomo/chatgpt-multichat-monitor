@@ -3,6 +3,9 @@ const chats = new Map();
 const PREFS_KEY = "monitorChatPrefs";
 const ORDER_KEY = "monitorChatOrder";
 const SECTIONS_KEY = "monitorSections";
+const SECTION_META_KEY = "monitorSectionMeta";
+const SECTION_UI_KEY = "monitorSectionUi";
+const GROUP_MODE_KEY = "monitorGroupMode";
 const HISTORY_KEY = "monitorHistory";
 const HISTORY_LIMIT = 100;
 const HISTORY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -10,6 +13,8 @@ const UPDATE_STATE_KEY = "monitorUpdateState";
 const WHATS_NEW_KEY = "monitorWhatsNewState";
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const LAYOUT_UNDO_TTL_MS = 10000;
+const GROUP_MODE_DEFAULT = "project";
+const VALID_GROUP_MODES = new Set(["project", "manual", "none"]);
 const RELEASES_API_URL =
   "https://api.github.com/repos/JoelMomo/chatgpt-multichat-monitor/releases/latest";
 const RELEASES_PAGE_URL =
@@ -44,6 +49,9 @@ const SOUND_KEY_BY_STATE = {
 let chatPrefs = {};
 let chatOrder = [];
 let sections = [];
+let sectionMeta = {};
+let sectionUi = {};
+let groupMode = GROUP_MODE_DEFAULT;
 let history = [];
 let updateState = {
   lastAttemptAt: 0,
@@ -82,6 +90,9 @@ async function ensureInitialized() {
       [PREFS_KEY]: {},
       [ORDER_KEY]: [],
       [SECTIONS_KEY]: [],
+      [SECTION_META_KEY]: {},
+      [SECTION_UI_KEY]: {},
+      [GROUP_MODE_KEY]: GROUP_MODE_DEFAULT,
       [HISTORY_KEY]: [],
       [UPDATE_STATE_KEY]: null,
       [WHATS_NEW_KEY]: null
@@ -95,6 +106,15 @@ async function ensureInitialized() {
     sections = Array.isArray(stored[SECTIONS_KEY])
       ? [...new Set(stored[SECTIONS_KEY].filter((id) => typeof id === "string" && id))].slice(0, 40)
       : [];
+    sectionMeta = stored[SECTION_META_KEY] && typeof stored[SECTION_META_KEY] === "object"
+      ? stored[SECTION_META_KEY]
+      : {};
+    sectionUi = stored[SECTION_UI_KEY] && typeof stored[SECTION_UI_KEY] === "object"
+      ? stored[SECTION_UI_KEY]
+      : {};
+    groupMode = VALID_GROUP_MODES.has(stored[GROUP_MODE_KEY])
+      ? stored[GROUP_MODE_KEY]
+      : GROUP_MODE_DEFAULT;
     const cutoff = Date.now() - HISTORY_MAX_AGE_MS;
     history = Array.isArray(stored[HISTORY_KEY])
       ? stored[HISTORY_KEY].filter((item) => Number(item.ts) >= cutoff).slice(0, HISTORY_LIMIT)
@@ -336,15 +356,35 @@ function rank(state) {
   })[state] ?? 9;
 }
 
+function projectGroupKey(chat) {
+  return chat.projectKey ? "project:" + chat.projectKey : "project:none";
+}
+
+function projectGroupLabel(chat) {
+  return String(chat.projectName || "").trim() || "No project";
+}
+
 function snapshot() {
   const manualIndex = new Map(chatOrder.map((key, index) => [key, index]));
   const sectionIndex = new Map([["", 0], ...sections.map((id, index) => [id, index + 1])]);
-  const segmented = sections.length > 0;
+  const segmented = groupMode === "manual" && sections.length > 0;
+  const projectGrouped = groupMode === "project";
 
   return [...chats.values()]
     .map(decorate)
     .sort((a, b) => {
-      if (segmented) {
+      if (projectGrouped) {
+        const aNone = a.projectKey ? 0 : 1;
+        const bNone = b.projectKey ? 0 : 1;
+        if (aNone !== bNone) return aNone - bNone;
+        const projectOrder = projectGroupLabel(a).localeCompare(projectGroupLabel(b), undefined, {
+          sensitivity: "base",
+          numeric: true
+        });
+        if (projectOrder) return projectOrder;
+        const keyOrder = projectGroupKey(a).localeCompare(projectGroupKey(b));
+        if (keyOrder) return keyOrder;
+      } else if (segmented) {
         const sectionOrder = (sectionIndex.get(a.section) ?? 0) - (sectionIndex.get(b.section) ?? 0);
         if (sectionOrder) return sectionOrder;
       }
@@ -354,7 +394,7 @@ function snapshot() {
 
       const aManual = manualIndex.has(a.chatKey) ? manualIndex.get(a.chatKey) : null;
       const bManual = manualIndex.has(b.chatKey) ? manualIndex.get(b.chatKey) : null;
-      if (!segmented) {
+      if (!projectGrouped && !segmented) {
         if (aManual !== null && bManual !== null && aManual !== bManual) return aManual - bManual;
         if (aManual !== null && bManual === null) return -1;
         if (aManual === null && bManual !== null) return 1;
@@ -363,7 +403,7 @@ function snapshot() {
       const stateOrder = rank(a.state) - rank(b.state);
       if (stateOrder) return stateOrder;
 
-      if (segmented) {
+      if (!projectGrouped && segmented) {
         if (aManual !== null && bManual !== null && aManual !== bManual) return aManual - bManual;
         if (aManual !== null && bManual === null) return -1;
         if (aManual === null && bManual !== null) return 1;
@@ -377,7 +417,12 @@ function snapshot() {
 }
 
 function separatorSnapshot() {
-  return sections.map((id) => ({ id }));
+  return sections.map((id) => ({
+    id,
+    name: typeof sectionMeta[id]?.name === "string" ? sectionMeta[id].name : "",
+    collapsed: sectionUi["manual:" + id]?.collapsed === true,
+    kind: "manual"
+  }));
 }
 
 async function persistHistory() {
@@ -569,6 +614,17 @@ function upsertState(payload, tab) {
     finishedAt = null;
   }
 
+  const sameChat = previous.chatKey === chatKey;
+  const projectKnown = payload.projectKnown === true;
+  const incomingProjectKey = typeof payload.projectKey === "string" ? payload.projectKey.trim().slice(0, 180) : "";
+  const incomingProjectName = typeof payload.projectName === "string" ? payload.projectName.trim().slice(0, 80) : "";
+  const projectKey = projectKnown
+    ? incomingProjectKey
+    : (sameChat ? String(previous.projectKey || "") : "");
+  const projectName = projectKey
+    ? (incomingProjectName || (sameChat && previous.projectKey === projectKey ? String(previous.projectName || "") : ""))
+    : "";
+
   const next = {
     tabId: tab.id,
     windowId: tab.windowId,
@@ -578,7 +634,10 @@ function upsertState(payload, tab) {
     state,
     startedAt,
     finishedAt,
-    updatedAt: payload.updatedAt || now
+    updatedAt: payload.updatedAt || now,
+    projectKnown: projectKnown || (sameChat && previous.projectKnown === true),
+    projectKey,
+    projectName
   };
 
   chats.set(tab.id, next);
@@ -767,7 +826,9 @@ function captureLayoutState() {
   return {
     sections: [...sections],
     chatOrder: [...chatOrder],
-    sectionsByChat
+    sectionsByChat,
+    sectionMeta: JSON.parse(JSON.stringify(sectionMeta)),
+    sectionUi: JSON.parse(JSON.stringify(sectionUi))
   };
 }
 
@@ -793,6 +854,12 @@ async function restoreLayoutUndo(id) {
   chatOrder = Array.isArray(entry.state.chatOrder)
     ? [...new Set(entry.state.chatOrder.filter((value) => typeof value === "string" && value))].slice(0, 200)
     : [];
+  sectionMeta = entry.state.sectionMeta && typeof entry.state.sectionMeta === "object"
+    ? entry.state.sectionMeta
+    : {};
+  sectionUi = entry.state.sectionUi && typeof entry.state.sectionUi === "object"
+    ? entry.state.sectionUi
+    : {};
 
   for (const key of Object.keys(chatPrefs)) {
     const next = { ...chatPrefs[key] };
@@ -812,7 +879,9 @@ async function restoreLayoutUndo(id) {
   await chrome.storage.local.set({
     [SECTIONS_KEY]: sections,
     [ORDER_KEY]: chatOrder,
-    [PREFS_KEY]: chatPrefs
+    [PREFS_KEY]: chatPrefs,
+    [SECTION_META_KEY]: sectionMeta,
+    [SECTION_UI_KEY]: sectionUi
   });
   return true;
 }
@@ -822,6 +891,8 @@ async function resetLayout() {
   const before = captureLayoutState();
   sections = [];
   chatOrder = [];
+  sectionMeta = {};
+  sectionUi = {};
 
   for (const key of Object.keys(chatPrefs)) {
     const next = { ...chatPrefs[key] };
@@ -833,7 +904,9 @@ async function resetLayout() {
   await chrome.storage.local.set({
     [SECTIONS_KEY]: [],
     [ORDER_KEY]: [],
-    [PREFS_KEY]: chatPrefs
+    [PREFS_KEY]: chatPrefs,
+    [SECTION_META_KEY]: {},
+    [SECTION_UI_KEY]: {}
   });
   return { ok: true, undoId: registerLayoutUndo(before) };
 }
@@ -848,7 +921,11 @@ async function addSeparator() {
   const before = captureLayoutState();
   const id = createSeparatorId();
   sections = [...sections, id].slice(0, 40);
-  await chrome.storage.local.set({ [SECTIONS_KEY]: sections });
+  sectionMeta[id] = { name: "" };
+  await chrome.storage.local.set({
+    [SECTIONS_KEY]: sections,
+    [SECTION_META_KEY]: sectionMeta
+  });
   return { ok: true, id, undoId: registerLayoutUndo(before) };
 }
 
@@ -859,6 +936,8 @@ async function removeSeparator(id) {
   const before = captureLayoutState();
   const fallback = index > 0 ? sections[index - 1] : "";
   sections.splice(index, 1);
+  delete sectionMeta[id];
+  delete sectionUi["manual:" + id];
 
   for (const key of Object.keys(chatPrefs)) {
     if (chatPrefs[key]?.section !== id) continue;
@@ -871,8 +950,56 @@ async function removeSeparator(id) {
 
   await chrome.storage.local.set({
     [SECTIONS_KEY]: sections,
-    [PREFS_KEY]: chatPrefs
+    [PREFS_KEY]: chatPrefs,
+    [SECTION_META_KEY]: sectionMeta,
+    [SECTION_UI_KEY]: sectionUi
   });
+  return { ok: true, undoId: registerLayoutUndo(before) };
+}
+
+async function setSeparatorMeta(id, patch) {
+  await ensureInitialized();
+  if (!sections.includes(id) || !patch || typeof patch !== "object") return { ok: false };
+  const before = captureLayoutState();
+  const current = sectionMeta[id] && typeof sectionMeta[id] === "object" ? sectionMeta[id] : {};
+  const next = { ...current };
+
+  if (Object.prototype.hasOwnProperty.call(patch, "name")) {
+    const name = String(patch.name || "").replace(/\s+/g, " ").trim().slice(0, 40);
+    if (name) next.name = name;
+    else delete next.name;
+  }
+
+  sectionMeta[id] = next;
+  await chrome.storage.local.set({ [SECTION_META_KEY]: sectionMeta });
+  return { ok: true, undoId: registerLayoutUndo(before) };
+}
+
+async function setSectionCollapsed(sectionKey, collapsed) {
+  await ensureInitialized();
+  const key = String(sectionKey || "").slice(0, 220);
+  if (!key || (!key.startsWith("manual:") && !key.startsWith("project:"))) return { ok: false };
+  const before = captureLayoutState();
+  const next = { ...(sectionUi[key] || {}) };
+  if (collapsed === true) next.collapsed = true;
+  else delete next.collapsed;
+  if (next.collapsed) sectionUi[key] = next;
+  else delete sectionUi[key];
+  await chrome.storage.local.set({ [SECTION_UI_KEY]: sectionUi });
+  return { ok: true, undoId: registerLayoutUndo(before) };
+}
+
+async function moveSeparator(id, direction) {
+  await ensureInitialized();
+  const index = sections.indexOf(id);
+  const nextIndex = index + Number(direction || 0);
+  if (index < 0 || nextIndex < 0 || nextIndex >= sections.length) return { ok: false };
+  const before = captureLayoutState();
+  const reordered = [...sections];
+  const [moved] = reordered.splice(index, 1);
+  reordered.splice(nextIndex, 0, moved);
+  sections = reordered;
+  await chrome.storage.local.set({ [SECTIONS_KEY]: sections });
   return { ok: true, undoId: registerLayoutUndo(before) };
 }
 
@@ -1057,6 +1184,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "monitor-set-separator-meta") {
+    setSeparatorMeta(String(message.id || ""), message.patch || {})
+      .then((result) => broadcast().then(() => sendResponse(result)))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-set-section-collapsed") {
+    setSectionCollapsed(String(message.sectionKey || ""), message.collapsed === true)
+      .then((result) => broadcast().then(() => sendResponse(result)))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-move-separator") {
+    moveSeparator(String(message.id || ""), Number(message.direction || 0))
+      .then((result) => broadcast().then(() => sendResponse(result)))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
   if (message?.type === "monitor-add-separator") {
     addSeparator()
       .then((result) => broadcast().then(() => sendResponse(result)))
@@ -1146,6 +1294,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true });
     return true;
   }
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local") return;
+  let shouldBroadcast = false;
+
+  if (changes[GROUP_MODE_KEY]) {
+    const nextMode = changes[GROUP_MODE_KEY].newValue;
+    groupMode = VALID_GROUP_MODES.has(nextMode) ? nextMode : GROUP_MODE_DEFAULT;
+    shouldBroadcast = true;
+  }
+  if (changes[SECTION_UI_KEY]) {
+    sectionUi = changes[SECTION_UI_KEY].newValue && typeof changes[SECTION_UI_KEY].newValue === "object"
+      ? changes[SECTION_UI_KEY].newValue
+      : {};
+  }
+  if (changes[SECTION_META_KEY]) {
+    sectionMeta = changes[SECTION_META_KEY].newValue && typeof changes[SECTION_META_KEY].newValue === "object"
+      ? changes[SECTION_META_KEY].newValue
+      : {};
+    shouldBroadcast = true;
+  }
+
+  if (shouldBroadcast) broadcast().catch(() => {});
 });
 
 chrome.commands.onCommand.addListener((command) => {
