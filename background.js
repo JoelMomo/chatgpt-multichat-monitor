@@ -839,10 +839,16 @@ async function resetChatOrder() {
 async function setProjectOrder(keys) {
   await ensureInitialized();
   const before = captureLayoutState();
-  projectOrder = [...new Set(
+  const ordered = [...new Set(
     (Array.isArray(keys) ? keys : [])
       .filter((key) => typeof key === "string" && key.startsWith("project:"))
   )].slice(0, 100);
+  const orderedSet = new Set(ordered);
+
+  projectOrder = [
+    ...ordered,
+    ...projectOrder.filter((key) => !orderedSet.has(key))
+  ].slice(0, 100);
 
   await chrome.storage.local.set({ [PROJECT_ORDER_KEY]: projectOrder });
   return { ok: true, undoId: registerLayoutUndo(before) };
