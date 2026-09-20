@@ -17,6 +17,11 @@
 - Improved drag feedback with destination-section highlighting and temporary **Drop here** targets for empty sections.
 - Added a short-lived **Undo** action for chat moves and separator changes.
 - Added **Reset layout** to clear separators, section assignments and manual ordering while preserving aliases, pins, Pending, hidden state and other chat preferences.
+- Added **By project** grouping as the default: the extension detects project membership from ChatGPT project routes, canonical URLs and sidebar conversation links, then creates automatic project sections locally.
+- Added **Manual / None** grouping modes without discarding existing manual section data when switching modes.
+- Added optional manual section names with an understated line–label–line design, inline rename, collapse/expand and collapsed chat counts.
+- Added section menus for rename/clear name, collapse/expand, move up/down and delete. Automatic project sections expose collapse/expand without pretending to rename or move the underlying ChatGPT project.
+- Project and manual collapsed state is persisted locally and participates in layout Undo/Reset.
 
 ## 0.3.0 - 2026-09-19
 
