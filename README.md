@@ -94,7 +94,7 @@
 - **Auto size + manual resize:** the monitor follows the number of visible chats by default, while a custom size remains available whenever you drag the resize handle. The footer's **Auto size** button returns to chat-driven sizing.
 - **Appearance controls:** choose System, Dark or Light theme and adjust monitor opacity from the popup.
 - **Smart priority order:** chats automatically move by priority: Error → Retry → Attention → Done → Pending → Working → Stopped → Draft → Idle. Manual drag order behaves as before without separators; inside separator blocks, state priority remains active.
-- **Active work timer:** Working chats now show the current visible ChatGPT phase when available — for example **Analizando / Analyzing**, search or tool execution — followed by the total active time for the current response. Changing phase does not reset the timer; hovering the status also shows the current-phase elapsed time.
+- **Active work timer:** Working chats now show the current visible ChatGPT phase when available — for example **Analizando / Analyzing**, search or tool execution — followed by the total active time for the current response. Changing phase does not reset the timer; hovering the status also shows the current-phase elapsed time. The active response start is persisted by conversation, so reloading the ChatGPT page or restarting the extension service worker does not reset the timer while that response is still active.
 - **Pending:** right-click an Idle LED to mark a chat for follow-up. Pending uses a distinct pink LED, pulses much more slowly than Working, and stays marked locally until you clear it. The invisible LED hit target is larger than the visible dot for easier interaction.
 - **Automatic project groups:** **By project** is now the default grouping mode. The extension detects ChatGPT project routes and sidebar links locally, creates project headers automatically and keeps **Other chats / No project** as safe fallbacks when membership is unavailable or absent. Project headers can now be dragged to persist a custom project order.
 - **Grouping modes:** choose **By project**, **Manual** or **None** in the popup. Manual separators are preserved when you temporarily switch modes.
@@ -312,7 +312,7 @@ Stored data is limited to:
 
 ## Limitations
 
-ChatGPT does not expose a public browser API for conversation generation state, internal compute time or project membership. Activity, visible work phases and project grouping are inferred from the browser interface and ChatGPT's own URLs/sidebar links, so a future ChatGPT frontend change may require detector updates. The work timer measures the period for which the current response is visibly active in ChatGPT; it is not a server-side compute timer.
+ChatGPT does not expose a public browser API for conversation generation state, internal compute time or project membership. Activity, visible work phases and project grouping are inferred from the browser interface and ChatGPT's own URLs/sidebar links, so a future ChatGPT frontend change may require detector updates. The work timer measures the period for which the current response is visibly active in ChatGPT; it is not a server-side compute timer. Active response timing metadata is stored locally only while needed so a page reload can restore the same timer.
 
 **Needs attention** is intentionally conservative and heuristic. A response ending in a question can be classified as attention even when a reply is not strictly required.
 
