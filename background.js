@@ -8,8 +8,11 @@ const SECTION_META_KEY = "monitorSectionMeta";
 const SECTION_UI_KEY = "monitorSectionUi";
 const GROUP_MODE_KEY = "monitorGroupMode";
 const HISTORY_KEY = "monitorHistory";
+const ACTIVE_RUNS_KEY = "monitorActiveRuns";
 const HISTORY_LIMIT = 100;
 const HISTORY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const ACTIVE_RUN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const ACTIVE_RUN_PERSIST_INTERVAL_MS = 5 * 60 * 1000;
 const UPDATE_STATE_KEY = "monitorUpdateState";
 const WHATS_NEW_KEY = "monitorWhatsNewState";
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -55,6 +58,9 @@ let sectionMeta = {};
 let sectionUi = {};
 let groupMode = GROUP_MODE_DEFAULT;
 let history = [];
+let activeRuns = {};
+const activeRunLastPersistedAt = new Map();
+let activeRunsWritePromise = Promise.resolve();
 let updateState = {
   lastAttemptAt: 0,
   checkedAt: 0,
@@ -85,6 +91,45 @@ function chatKeyFromUrl(url, tabId) {
   return "tab:" + String(tabId ?? "unknown");
 }
 
+function activeRunFor(chatKey) {
+  const run = activeRuns[chatKey];
+  if (!run || typeof run !== "object") return null;
+  const startedAt = Number(run.startedAt);
+  const updatedAt = Number(run.updatedAt);
+  if (!Number.isFinite(startedAt) || startedAt <= 0 ||
+      !Number.isFinite(updatedAt) ||
+      Date.now() - updatedAt > ACTIVE_RUN_MAX_AGE_MS) {
+    if (activeRuns[chatKey]) {
+      delete activeRuns[chatKey];
+      queueActiveRunsPersist();
+    }
+    return null;
+  }
+  return {
+    startedAt,
+    workPhase: String(run.workPhase || ""),
+    phaseStartedAt: Number.isFinite(Number(run.phaseStartedAt))
+      ? Number(run.phaseStartedAt)
+      : null,
+    updatedAt
+  };
+}
+
+function queueActiveRunsPersist() {
+  const snapshot = JSON.parse(JSON.stringify(activeRuns));
+  activeRunsWritePromise = activeRunsWritePromise
+    .catch(() => {})
+    .then(() => chrome.storage.local.set({ [ACTIVE_RUNS_KEY]: snapshot }));
+  return activeRunsWritePromise;
+}
+
+function clearActiveRun(chatKey) {
+  if (!chatKey || !activeRuns[chatKey]) return false;
+  delete activeRuns[chatKey];
+  activeRunLastPersistedAt.delete(chatKey);
+  return true;
+}
+
 async function ensureInitialized() {
   if (initPromise) return initPromise;
   initPromise = (async () => {
@@ -97,6 +142,7 @@ async function ensureInitialized() {
       [SECTION_UI_KEY]: {},
       [GROUP_MODE_KEY]: GROUP_MODE_DEFAULT,
       [HISTORY_KEY]: [],
+      [ACTIVE_RUNS_KEY]: {},
       [UPDATE_STATE_KEY]: null,
       [WHATS_NEW_KEY]: null
     });
@@ -125,6 +171,31 @@ async function ensureInitialized() {
     history = Array.isArray(stored[HISTORY_KEY])
       ? stored[HISTORY_KEY].filter((item) => Number(item.ts) >= cutoff).slice(0, HISTORY_LIMIT)
       : [];
+
+    const activeRunCutoff = Date.now() - ACTIVE_RUN_MAX_AGE_MS;
+    activeRuns = {};
+    if (stored[ACTIVE_RUNS_KEY] && typeof stored[ACTIVE_RUNS_KEY] === "object") {
+      for (const [key, value] of Object.entries(stored[ACTIVE_RUNS_KEY])) {
+        if (!key || !value || typeof value !== "object") continue;
+        const startedAt = Number(value.startedAt);
+        const updatedAt = Number(value.updatedAt);
+        if (!Number.isFinite(startedAt) || startedAt <= 0 ||
+            !Number.isFinite(updatedAt) || updatedAt < activeRunCutoff) {
+          continue;
+        }
+        activeRuns[key] = {
+          startedAt,
+          workPhase: typeof value.workPhase === "string"
+            ? value.workPhase.trim().replace(/\s+/g, " ").slice(0, 48)
+            : "",
+          phaseStartedAt: Number.isFinite(Number(value.phaseStartedAt))
+            ? Number(value.phaseStartedAt)
+            : null,
+          updatedAt
+        };
+        activeRunLastPersistedAt.set(key, updatedAt);
+      }
+    }
 
     const storedUpdate = stored[UPDATE_STATE_KEY];
     if (storedUpdate && typeof storedUpdate === "object") {
@@ -612,29 +683,90 @@ async function updateBadge() {
 }
 
 function upsertState(payload, tab) {
-  if (!tab || !Number.isInteger(tab.id)) return;
+  if (!tab || !Number.isInteger(tab.id)) return false;
   const now = Date.now();
   const hadPrevious = chats.has(tab.id);
   const previous = chats.get(tab.id) || {};
   const state = payload.state || "idle";
   const chatKey = chatKeyFromUrl(payload.url || tab.url, tab.id);
-
-  let startedAt = payload.startedAt ?? previous.startedAt ?? null;
-  let finishedAt = payload.finishedAt ?? previous.finishedAt ?? null;
-
-  if (state === "working" && previous.state !== "working" && !payload.startedAt) {
-    startedAt = now;
-    finishedAt = null;
-  }
-  if (["finished", "interrupted", "retry", "attention", "error"].includes(state) && !finishedAt) {
-    finishedAt = now;
-  }
-  if (state === "idle" || state === "draft") {
-    startedAt = null;
-    finishedAt = null;
-  }
-
   const sameChat = previous.chatKey === chatKey;
+  const persistedRun = activeRunFor(chatKey);
+  let activeRunsChanged = false;
+
+  const payloadStartedAt = Number(payload.startedAt);
+  const payloadPhaseStartedAt = Number(payload.phaseStartedAt);
+  const hasWorkPhase = Object.prototype.hasOwnProperty.call(payload, "workPhase");
+  const incomingWorkPhase = hasWorkPhase
+    ? String(payload.workPhase || "").trim().replace(/\s+/g, " ").slice(0, 48)
+    : null;
+
+  let startedAt = Number.isFinite(payloadStartedAt) && payloadStartedAt > 0
+    ? payloadStartedAt
+    : (sameChat ? previous.startedAt ?? null : null);
+  let finishedAt = payload.finishedAt ?? (sameChat ? previous.finishedAt ?? null : null);
+  let workPhase = hasWorkPhase
+    ? incomingWorkPhase
+    : (state === "working" && sameChat ? String(previous.workPhase || "") : "");
+  let phaseStartedAt = Number.isFinite(payloadPhaseStartedAt) && payloadPhaseStartedAt > 0
+    ? payloadPhaseStartedAt
+    : (state === "working" && sameChat ? previous.phaseStartedAt ?? null : null);
+
+  if (state === "working") {
+    finishedAt = null;
+
+    if (persistedRun) {
+      startedAt = persistedRun.startedAt;
+
+      if (hasWorkPhase) {
+        workPhase = incomingWorkPhase;
+        if (!workPhase) {
+          phaseStartedAt = null;
+        } else if (workPhase === persistedRun.workPhase && persistedRun.phaseStartedAt) {
+          phaseStartedAt = persistedRun.phaseStartedAt;
+        } else if (!(Number.isFinite(payloadPhaseStartedAt) && payloadPhaseStartedAt > 0)) {
+          phaseStartedAt = now;
+        }
+      } else {
+        workPhase = persistedRun.workPhase;
+        phaseStartedAt = persistedRun.phaseStartedAt;
+      }
+    } else {
+      if (!startedAt) startedAt = now;
+      if (workPhase && !phaseStartedAt) phaseStartedAt = startedAt;
+    }
+
+    const nextRun = {
+      startedAt,
+      workPhase,
+      phaseStartedAt,
+      updatedAt: now
+    };
+    const currentRun = activeRuns[chatKey];
+    const runFieldsChanged = !currentRun ||
+      currentRun.startedAt !== nextRun.startedAt ||
+      currentRun.workPhase !== nextRun.workPhase ||
+      currentRun.phaseStartedAt !== nextRun.phaseStartedAt;
+    const persistenceDue = now - (activeRunLastPersistedAt.get(chatKey) || 0) >= ACTIVE_RUN_PERSIST_INTERVAL_MS;
+
+    activeRuns[chatKey] = nextRun;
+    if (runFieldsChanged || persistenceDue) {
+      activeRunLastPersistedAt.set(chatKey, now);
+      activeRunsChanged = true;
+    }
+  } else {
+    if (clearActiveRun(chatKey)) activeRunsChanged = true;
+    workPhase = "";
+    phaseStartedAt = null;
+
+    if (["finished", "interrupted", "retry", "attention", "error"].includes(state) && !finishedAt) {
+      finishedAt = now;
+    }
+    if (state === "idle" || state === "draft") {
+      startedAt = null;
+      finishedAt = null;
+    }
+  }
+
   const projectKnown = payload.projectKnown === true;
   const incomingProjectKey = typeof payload.projectKey === "string" ? payload.projectKey.trim().slice(0, 180) : "";
   const incomingProjectName = typeof payload.projectName === "string" ? payload.projectName.trim().slice(0, 80) : "";
@@ -654,6 +786,8 @@ function upsertState(payload, tab) {
     state,
     startedAt,
     finishedAt,
+    workPhase,
+    phaseStartedAt,
     updatedAt: payload.updatedAt || now,
     projectKnown: projectKnown || (sameChat && previous.projectKnown === true),
     projectKey,
@@ -667,6 +801,9 @@ function upsertState(payload, tab) {
       queueStateSound(next);
     }
   }
+
+  if (activeRunsChanged) queueActiveRunsPersist();
+  return activeRunsChanged;
 }
 
 async function broadcast() {
@@ -712,16 +849,42 @@ async function rebuildRegistry() {
     if (!Number.isInteger(tab.id)) return;
 
     if (tab.discarded) {
-      upsertState({ state: "idle", title: tab.title, url: tab.url }, tab);
+      const chatKey = chatKeyFromUrl(tab.url, tab.id);
+      const run = activeRunFor(chatKey);
+      if (run) {
+        upsertState({
+          state: "working",
+          title: tab.title,
+          url: tab.url,
+          startedAt: run.startedAt,
+          workPhase: run.workPhase,
+          phaseStartedAt: run.phaseStartedAt
+        }, tab);
+      } else {
+        upsertState({ state: "idle", title: tab.title, url: tab.url }, tab);
+      }
       return;
     }
 
     try {
       const local = await chrome.tabs.sendMessage(tab.id, { type: "monitor-get-local-state" });
-      if (local) upsertState(local, tab);
+      if (local && local.initializing !== true) upsertState(local, tab);
     } catch {
       if (!chats.has(tab.id)) {
-        upsertState({ state: "idle", title: tab.title, url: tab.url }, tab);
+        const chatKey = chatKeyFromUrl(tab.url, tab.id);
+        const run = activeRunFor(chatKey);
+        if (run) {
+          upsertState({
+            state: "working",
+            title: tab.title,
+            url: tab.url,
+            startedAt: run.startedAt,
+            workPhase: run.workPhase,
+            phaseStartedAt: run.phaseStartedAt
+          }, tab);
+        } else {
+          upsertState({ state: "idle", title: tab.title, url: tab.url }, tab);
+        }
       }
     }
   }));
@@ -1180,6 +1343,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "monitor-get-active-run") {
+    ensureInitialized()
+      .then(() => {
+        const chatKey = chatKeyFromUrl(message.url || sender.tab?.url || "", sender.tab?.id);
+        sendResponse({ ok: true, chatKey, run: activeRunFor(chatKey) });
+      })
+      .catch(() => sendResponse({ ok: false, run: null }));
+    return true;
+  }
+
   if (message?.type === "monitor-get-snapshot") {
     rebuildRegistry()
       .then(() => sendResponse({ chats: snapshot(), separators: separatorSnapshot() }))
@@ -1406,7 +1579,18 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   cancelPendingDoneSound(tabId);
+  const removed = chats.get(tabId);
   if (!chats.delete(tabId)) return;
+
+  if (removed?.chatKey) {
+    const stillOpen = [...chats.values()].some((chat) =>
+      chat.chatKey === removed.chatKey && chat.state === "working"
+    );
+    if (!stillOpen && clearActiveRun(removed.chatKey)) {
+      queueActiveRunsPersist().catch(() => {});
+    }
+  }
+
   broadcast().catch(() => {});
 });
 
@@ -1428,11 +1612,25 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (!previous) return;
 
   if (discardedNow || isLoading) {
-    upsertState({
-      state: "idle",
-      title: changeInfo.title || tab.title || previous.title,
-      url: changeInfo.url || tab.url || previous.url
-    }, tab);
+    const nextUrl = changeInfo.url || tab.url || previous.url;
+    const nextChatKey = chatKeyFromUrl(nextUrl, tabId);
+
+    if (nextChatKey === previous.chatKey) {
+      chats.set(tabId, {
+        ...previous,
+        windowId: tab.windowId,
+        title: cleanTitle(changeInfo.title || tab.title || previous.title),
+        url: nextUrl
+      });
+    } else {
+      if (clearActiveRun(previous.chatKey)) queueActiveRunsPersist().catch(() => {});
+      upsertState({
+        state: "idle",
+        title: changeInfo.title || tab.title || previous.title,
+        url: nextUrl
+      }, tab);
+    }
+
     broadcast().catch(() => {});
     return;
   }
