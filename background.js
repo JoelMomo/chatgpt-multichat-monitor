@@ -12,6 +12,7 @@ const ACTIVE_RUNS_KEY = "monitorActiveRuns";
 const HISTORY_LIMIT = 100;
 const HISTORY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const ACTIVE_RUN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const ACTIVE_RUN_PERSIST_INTERVAL_MS = 5 * 60 * 1000;
 const UPDATE_STATE_KEY = "monitorUpdateState";
 const WHATS_NEW_KEY = "monitorWhatsNewState";
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -58,6 +59,7 @@ let sectionUi = {};
 let groupMode = GROUP_MODE_DEFAULT;
 let history = [];
 let activeRuns = {};
+const activeRunLastPersistedAt = new Map();
 let activeRunsWritePromise = Promise.resolve();
 let updateState = {
   lastAttemptAt: 0,
@@ -124,6 +126,7 @@ function queueActiveRunsPersist() {
 function clearActiveRun(chatKey) {
   if (!chatKey || !activeRuns[chatKey]) return false;
   delete activeRuns[chatKey];
+  activeRunLastPersistedAt.delete(chatKey);
   return true;
 }
 
@@ -190,6 +193,7 @@ async function ensureInitialized() {
             : null,
           updatedAt
         };
+        activeRunLastPersistedAt.set(key, updatedAt);
       }
     }
 
@@ -738,12 +742,15 @@ function upsertState(payload, tab) {
       updatedAt: now
     };
     const currentRun = activeRuns[chatKey];
-    if (!currentRun ||
-        currentRun.startedAt !== nextRun.startedAt ||
-        currentRun.workPhase !== nextRun.workPhase ||
-        currentRun.phaseStartedAt !== nextRun.phaseStartedAt ||
-        currentRun.updatedAt !== nextRun.updatedAt) {
-      activeRuns[chatKey] = nextRun;
+    const runFieldsChanged = !currentRun ||
+      currentRun.startedAt !== nextRun.startedAt ||
+      currentRun.workPhase !== nextRun.workPhase ||
+      currentRun.phaseStartedAt !== nextRun.phaseStartedAt;
+    const persistenceDue = now - (activeRunLastPersistedAt.get(chatKey) || 0) >= ACTIVE_RUN_PERSIST_INTERVAL_MS;
+
+    activeRuns[chatKey] = nextRun;
+    if (runFieldsChanged || persistenceDue) {
+      activeRunLastPersistedAt.set(chatKey, now);
       activeRunsChanged = true;
     }
   } else {
