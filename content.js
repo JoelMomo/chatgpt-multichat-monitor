@@ -764,7 +764,7 @@
   }
 
   function showLayoutUndo(label, undoId) {
-    if (!undoButton || !undoId) return;
+    if (layoutLocked() || !undoButton || !undoId) return;
     hideLayoutUndo();
     currentUndoId = undoId;
     undoButton.dataset.undoId = undoId;
@@ -1438,6 +1438,7 @@
         ? "Click to collapse or expand · double-click to rename"
         : "Click to collapse or expand";
     node.caption.setAttribute("aria-disabled", locked ? "true" : "false");
+    node.caption.tabIndex = locked ? -1 : 0;
     node.input.hidden = true;
     node.input.disabled = locked;
     node.count.textContent = descriptor.collapsed && descriptor.count
@@ -1834,9 +1835,9 @@
       "#panel.collapsed{width:215px}.collapsed .list,.collapsed .empty,.collapsed .foot,.collapsed .add-separator{display:none}" +
       ".collapsed .head{border-bottom:0;gap:5px}.collapsed .brand{font-size:0}.collapsed .brand::after{content:'Monitor';font-size:11px}.collapsed .summary{gap:3px}.collapsed .count-badge{width:18px;height:18px;font-size:9px}" +
       "#panel.compact{width:214px}#panel.compact.collapsed{width:214px}" +
-      ".compact .head{height:36px;padding:0 6px 0 9px;gap:5px}.compact .brand{font-size:0}.compact .brand::after{content:'Monitor';font-size:11px}" +
+      ".compact .head{height:36px;padding:0 6px 0 9px;gap:3px}.compact .brand{font-size:0}.compact .brand::after{content:'Monitor';font-size:11px}" +
       ".compact .summary{gap:3px}.compact .count-badge{width:18px;height:18px;font-size:9px}.compact .add-separator{width:22px;height:22px}.compact .add-separator::before{left:6px;right:6px;top:7px;box-shadow:0 5px 0 currentColor}.compact .add-separator::after{right:2px;bottom:1px}.compact .meta,.compact .foot,.compact .version-label{display:none}" +
-      ".compact .list{padding:3px}.compact .chat-main{padding:5px 4px 5px 7px;gap:7px}.compact .copy{margin:-5px 0;padding:5px 0}.compact .section-separator{height:22px;gap:4px}.compact .separator-caption{font-size:9px;max-width:50%}.compact .separator-count{font-size:8px}.compact .separator-more{width:17px;height:17px}.compact .section-dropzone{height:24px;margin:2px 4px}.compact .header-tool{width:21px;height:21px;border-radius:6px}.compact .lock-button{font-size:11px}.compact .undo-header{font-size:15px}" +
+      ".compact .list{padding:3px}.compact .chat-main{padding:5px 4px 5px 7px;gap:7px}.compact .copy{margin:-5px 0;padding:5px 0}.compact .section-separator{height:22px;gap:4px}.compact .separator-caption{font-size:9px;max-width:50%}.compact .separator-count{font-size:8px}.compact .separator-more{width:17px;height:17px}.compact .section-dropzone{height:24px;margin:2px 4px}.compact .header-tool{width:19px;height:19px;border-radius:5px}.compact .lock-button{font-size:10px}.compact .undo-header{font-size:14px}.compact .collapse{width:24px;height:24px}" +
 
       ".compact .more{width:22px;height:22px;margin-right:2px;opacity:.18;transition:opacity .12s}.compact .chat-row:hover .more,.compact .more:focus-visible{opacity:1}" +
       ".compact .dot{width:8px;height:8px}" +
@@ -1979,6 +1980,7 @@
       chrome.storage.local.set({
         monitorLayoutLocked: settings.monitorLayoutLocked
       });
+      if (layoutLocked()) hideLayoutUndo();
       finishLayoutDrag();
       closeMenus();
       render();
