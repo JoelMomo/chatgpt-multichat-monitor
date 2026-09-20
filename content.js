@@ -1456,6 +1456,19 @@
     node.more.title = descriptor.kind === "manual" ? "Section options" : "Project options";
   }
 
+  function projectScopedDisplayTitle(chat, mode) {
+    const title = String(chat.displayTitle || chat.title || "ChatGPT").trim();
+    if (mode !== "project" || chat.alias || !chat.projectKey) return title;
+
+    const projectName = String(chat.projectName || "").trim();
+    if (!projectName) return title;
+
+    const escapedProjectName = projectName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const prefix = new RegExp("^" + escapedProjectName + "\\s*(?:[·•|:–—-])\\s*", "i");
+    const shortened = title.replace(prefix, "").trim();
+    return shortened || title;
+  }
+
   function projectDescriptors(visible) {
     const byProject = new Map();
     for (const chat of visible) {
@@ -1561,7 +1574,8 @@
         locked ? "Chat layout locked" : canDrag ? "Drag chat to reorder" : "Chat project grouping is automatic"
       );
 
-      node.title.textContent = (chat.pinned ? "📌 " : "") + (chat.displayTitle || chat.title || "ChatGPT");
+      const visibleTitle = projectScopedDisplayTitle(chat, mode);
+      node.title.textContent = (chat.pinned ? "📌 " : "") + visibleTitle;
       node.meta.textContent = statusText(chat, now);
       node.dot.title = chat.state === "idle"
         ? "Idle — right-click to mark Pending"
@@ -1571,7 +1585,7 @@
       node.dot.setAttribute("aria-label", stateName(chat.state));
       node.main.setAttribute(
         "aria-label",
-        (chat.displayTitle || chat.title || "ChatGPT") + ", " + node.meta.textContent
+        visibleTitle + ", " + node.meta.textContent
       );
 
       maybeFlash(node, chat);

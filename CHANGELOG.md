@@ -20,6 +20,7 @@
 - Added **Reset layout** to clear separators, section assignments and manual ordering while preserving aliases, pins, Pending, hidden state and other chat preferences.
 - Added **By project** grouping as the default: the extension detects project membership from ChatGPT project routes, canonical URLs and sidebar conversation links, then creates automatic project sections locally.
 - Project headers can now be dragged or moved from their section menu to persist a custom project order without moving the underlying ChatGPT projects.
+- In **By project**, automatic chat titles no longer repeat the project name when the project header already provides that context; custom aliases remain unchanged.
 - Added **Manual / None** grouping modes without discarding existing manual section data when switching modes.
 - Added optional manual section names with an understated line–label–line design, inline rename, collapse/expand and collapsed chat counts.
 - Added section menus for rename/clear name, collapse/expand, move up/down and delete. Automatic project sections expose collapse/expand without pretending to rename or move the underlying ChatGPT project.
