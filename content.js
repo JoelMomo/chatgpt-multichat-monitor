@@ -128,6 +128,17 @@
       .slice(0, 80);
   }
 
+  function cleanProjectNameCandidate(value) {
+    let label = cleanProjectLabel(value);
+    if (!label) return "";
+
+    label = label
+      .replace(/^(?:abrir\s+(?:el\s+)?proyecto|open\s+project|ouvrir\s+(?:le\s+)?projet|projekt\s+öffnen|apri\s+progetto|abrir\s+projeto)\s*[:\-–—]?\s*/i, "")
+      .trim();
+
+    return cleanProjectLabel(label);
+  }
+
   function projectNameFromDom(projectKey) {
     if (!projectKey) return "";
     for (const link of document.querySelectorAll('a[href*="/g/g-p-"]')) {
@@ -138,12 +149,15 @@
         path = new URL(link.getAttribute("href") || link.href, location.origin).pathname;
       } catch {}
       if (!/\/project\/?$/i.test(path)) continue;
-      const label = cleanProjectLabel(
-        link.getAttribute("aria-label") ||
-        link.getAttribute("title") ||
-        link.textContent
-      );
-      if (label) return label;
+
+      for (const candidate of [
+        link.textContent,
+        link.getAttribute("title"),
+        link.getAttribute("aria-label")
+      ]) {
+        const label = cleanProjectNameCandidate(candidate);
+        if (label) return label;
+      }
     }
     return "";
   }
