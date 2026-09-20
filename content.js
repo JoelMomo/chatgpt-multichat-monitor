@@ -1708,13 +1708,13 @@
       ".undo-toast{position:absolute;z-index:5;left:50%;bottom:43px;transform:translateX(-50%);display:flex;align-items:center;gap:9px;max-width:calc(100% - 20px);padding:7px 8px 7px 10px;border:1px solid #3a4555;border-radius:9px;background:#1b222c;box-shadow:0 8px 24px rgba(0,0,0,.34);font:600 11px/1.2 system-ui;white-space:nowrap}.undo-toast[hidden]{display:none}.undo-label{min-width:0;overflow:hidden;text-overflow:ellipsis}.undo-button{height:23px;border:0;border-radius:6px;padding:0 7px;background:#283544;color:#7ee2d7;font:750 10px system-ui;cursor:pointer}.undo-button:hover{background:#334354;color:#a3eee6}" +
       ".empty{padding:18px 14px 20px;color:#8e9bad;text-align:center;font-size:12px}" +
       ".foot{min-height:35px;display:flex;align-items:center;justify-content:center;gap:8px;padding:7px 9px 8px 12px;color:#6f7c8e;text-align:center;font-size:10px;border-top:1px solid #29313d}" +
-      ".foot-copy{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.auto-size-button{display:inline-flex;align-items:center;flex:0 0 auto;height:22px;padding:0 7px;border:1px solid #354052;border-radius:7px;background:#171d26;color:#aeb8c7;font:600 10px system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}" +
+      ".foot-copy{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.version-label{flex:0 0 auto;color:#566274;font:600 9px/1 system-ui;font-variant-numeric:tabular-nums}.auto-size-button{display:inline-flex;align-items:center;flex:0 0 auto;height:22px;padding:0 7px;border:1px solid #354052;border-radius:7px;background:#171d26;color:#aeb8c7;font:600 10px system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}" +
       ".auto-size-button:hover:not(:disabled){background:#252d38;color:#fff;border-color:#465267}.auto-size-button:disabled{opacity:.38;cursor:default}" +
       "#panel.collapsed{width:215px}.collapsed .list,.collapsed .empty,.collapsed .foot,.collapsed .add-separator{display:none}" +
       ".collapsed .head{border-bottom:0;gap:5px}.collapsed .brand{font-size:0}.collapsed .brand::after{content:'Monitor';font-size:11px}.collapsed .summary{gap:3px}.collapsed .count-badge{width:18px;height:18px;font-size:9px}" +
       "#panel.compact{width:214px}#panel.compact.collapsed{width:214px}" +
       ".compact .head{height:36px;padding:0 6px 0 9px;gap:5px}.compact .brand{font-size:0}.compact .brand::after{content:'Monitor';font-size:11px}" +
-      ".compact .summary{gap:3px}.compact .count-badge{width:18px;height:18px;font-size:9px}.compact .add-separator{width:22px;height:22px}.compact .add-separator::before{left:6px;right:6px;top:7px;box-shadow:0 5px 0 currentColor}.compact .add-separator::after{right:2px;bottom:1px}.compact .meta,.compact .foot{display:none}" +
+      ".compact .summary{gap:3px}.compact .count-badge{width:18px;height:18px;font-size:9px}.compact .add-separator{width:22px;height:22px}.compact .add-separator::before{left:6px;right:6px;top:7px;box-shadow:0 5px 0 currentColor}.compact .add-separator::after{right:2px;bottom:1px}.compact .meta,.compact .foot,.compact .version-label{display:none}" +
       ".compact .list{padding:3px}.compact .chat-main{padding:5px 4px 5px 7px;gap:7px}.compact .copy{margin:-5px 0;padding:5px 0}.compact .section-separator{height:22px;gap:4px}.compact .separator-caption{font-size:9px;max-width:50%}.compact .separator-count{font-size:8px}.compact .separator-more{width:17px;height:17px}.compact .section-dropzone{height:24px;margin:2px 4px}.compact .undo-toast{bottom:7px}" +
 
       ".compact .more{width:22px;height:22px;margin-right:2px;opacity:.18;transition:opacity .12s}.compact .chat-row:hover .more,.compact .more:focus-visible{opacity:1}" +
@@ -1733,7 +1733,7 @@
       ":host([data-theme='light']) .meta{color:#68778b}:host([data-theme='light']) .pinned .chat-title{color:#17212d}" +
       ":host([data-theme='light']) .floating-menu{border-color:#ced7e2;background:#ffffff;box-shadow:0 10px 26px rgba(31,43,58,.2)}" +
       ":host([data-theme='light']) .menu-action{color:#263342}:host([data-theme='light']) .menu-action:hover{background:#edf2f7}" +
-      ":host([data-theme='light']) .empty{color:#748196}:host([data-theme='light']) .foot{color:#7c899b;border-top-color:#dce3ec}" +
+      ":host([data-theme='light']) .empty{color:#748196}:host([data-theme='light']) .foot{color:#7c899b;border-top-color:#dce3ec}:host([data-theme='light']) .version-label{color:#99a4b2}" +
       ":host([data-theme='light']) .auto-size-button{border-color:#ccd5df;background:#f8fafc;color:#5c6a7c}:host([data-theme='light']) .auto-size-button:hover{background:#e9eff5;color:#182331;border-color:#b8c4d1}" +
       ":host([data-theme='light']) .resize-handle{background:linear-gradient(135deg,transparent 0 52%,#7d8998 53% 58%,transparent 59% 68%,#7d8998 69% 74%,transparent 75%)}" +
       ".flash{animation:stateflash 1.2s ease-out 1}.no-animations .state-working .dot,.no-animations .state-pending .dot,.no-animations .flash{animation:none}:host([data-theme='light']) .flash{animation-name:stateflashlight}" +
@@ -1796,6 +1796,12 @@
     footCopy.className = "foot-copy";
     footCopy.textContent = "Click to switch · drag the chat text to reorder";
 
+    const versionLabel = document.createElement("span");
+    versionLabel.className = "version-label";
+    versionLabel.textContent = "v" + chrome.runtime.getManifest().version;
+    versionLabel.title = "Extension version " + chrome.runtime.getManifest().version;
+    versionLabel.setAttribute("aria-label", "Extension version " + chrome.runtime.getManifest().version);
+
     autoSizeButton = document.createElement("button");
     autoSizeButton.className = "auto-size-button";
     autoSizeButton.type = "button";
@@ -1803,7 +1809,7 @@
     autoSizeButton.title = "Fit monitor to the visible chats";
     autoSizeButton.setAttribute("aria-label", "Return monitor to automatic size");
 
-    foot.append(footCopy, autoSizeButton);
+    foot.append(footCopy, versionLabel, autoSizeButton);
 
     resizeHandle = document.createElement("div");
     resizeHandle.className = "resize-handle";
