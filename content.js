@@ -999,6 +999,7 @@
       row,
       main,
       dot,
+      copy,
       title,
       meta,
       more,
@@ -1006,7 +1007,7 @@
     };
 
     copy.addEventListener("dragstart", (event) => {
-      if (!node.chat) {
+      if (!node.chat || activeGroupMode() === "project") {
         event.preventDefault();
         return;
       }
@@ -1018,11 +1019,15 @@
       closeMenus();
 
       const sourceSection = node.chat.section || "";
-      const members = [...rowNodes.values()].filter((item) =>
-        item.chat && (item.chat.section || "") === sourceSection && item.row.isConnected
-      );
-      if (members.length === 1) {
-        sectionDropNodes.get(sourceSection)?.classList.add("source-will-empty");
+      if (activeGroupMode() === "manual") {
+        const members = chats.filter((item) =>
+          !item.hidden &&
+          (item.section || "") === sourceSection &&
+          isRecent(item, Date.now())
+        );
+        if (members.length === 1) {
+          sectionDropNodes.get(sourceSection)?.classList.add("source-will-empty");
+        }
       }
 
       if (event.dataTransfer) {
@@ -1088,22 +1093,26 @@
       );
     }
 
+    if (activeGroupMode() !== "project") {
+      floatingMenu.append(
+        createMenuButton("Move up", () => {
+          moveChat(chat, -1).then(closeMenus);
+        }),
+        createMenuButton("Move down", () => {
+          moveChat(chat, 1).then(closeMenus);
+        })
+      );
+    }
+
     floatingMenu.append(
-      createMenuButton("Move up", () => {
-        moveChat(chat, -1).then(closeMenus);
-      }),
-      createMenuButton("Move down", () => {
-        moveChat(chat, 1).then(closeMenus);
-      }),
       createMenuButton("Hide", () => {
         setChatPreference(chat.chatKey, { hidden: true }).then(closeMenus);
       })
     );
   }
 
-  function openFloatingMenu(anchor, chat) {
+  function positionFloatingMenu(anchor) {
     if (!floatingMenu) return;
-    rebuildFloatingMenu(chat);
     floatingMenu.hidden = false;
     floatingMenu.style.visibility = "hidden";
 
@@ -1124,6 +1133,62 @@
     floatingMenu.style.left = Math.round(left) + "px";
     floatingMenu.style.top = Math.round(top) + "px";
     floatingMenu.style.visibility = "visible";
+  }
+
+  function openFloatingMenu(anchor, chat) {
+    if (!floatingMenu) return;
+    rebuildFloatingMenu(chat);
+    positionFloatingMenu(anchor);
+  }
+
+  function rebuildSectionMenu(descriptor, node) {
+    if (!floatingMenu) return;
+    floatingMenu.replaceChildren();
+
+    if (descriptor.kind === "manual") {
+      floatingMenu.append(
+        createMenuButton(descriptor.name ? "Rename section" : "Name section", () => {
+          closeMenus();
+          beginSectionRename(node);
+        })
+      );
+      if (descriptor.name) {
+        floatingMenu.append(
+          createMenuButton("Clear section name", () => {
+            renameManualSection(descriptor, "").then(closeMenus);
+          })
+        );
+      }
+    }
+
+    floatingMenu.append(
+      createMenuButton(descriptor.collapsed ? "Expand section" : "Collapse section", () => {
+        setSectionCollapsed(descriptor, !descriptor.collapsed).then(closeMenus);
+      })
+    );
+
+    if (descriptor.kind === "manual") {
+      floatingMenu.append(
+        createMenuButton("Move section up", () => {
+          moveManualSection(descriptor, -1).then(closeMenus);
+        }),
+        createMenuButton("Move section down", () => {
+          moveManualSection(descriptor, 1).then(closeMenus);
+        }),
+        createMenuButton("Delete section", () => {
+          sendMessage({ type: "monitor-remove-separator", id: descriptor.id }).then((response) => {
+            if (response?.ok && response.undoId) showLayoutUndo("Section removed", response.undoId);
+            closeMenus();
+          });
+        })
+      );
+    }
+  }
+
+  function openSectionMenu(anchor, descriptor, node) {
+    if (!floatingMenu) return;
+    rebuildSectionMenu(descriptor, node);
+    positionFloatingMenu(anchor);
   }
 
   function updateHeaderSummary(visible) {
