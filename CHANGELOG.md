@@ -15,15 +15,17 @@
 - Added persistent draggable separators. A header control creates a divider, dragging the divider changes group boundaries, and chats continue to smart-sort by state inside each section.
 - Removed the visible `⋮⋮` drag handles: the full chat text area (name + status line) is now the drag target, separator lines drag directly, and the add-separator icon is slightly smaller.
 - Improved drag feedback with destination-section highlighting and temporary **Drop here** targets for empty sections.
-- Added a short-lived **Undo** action for chat moves and separator changes.
+- Added a short-lived **Undo** action for chat moves and separator changes; it now appears as a compact **↶** control in the monitor header instead of an overlay toast.
 - Added **Reset layout** to clear separators, section assignments and manual ordering while preserving aliases, pins, Pending, hidden state and other chat preferences.
 - Added **By project** grouping as the default: the extension detects project membership from ChatGPT project routes, canonical URLs and sidebar conversation links, then creates automatic project sections locally.
+- Project headers can now be dragged or moved from their section menu to persist a custom project order without moving the underlying ChatGPT projects.
 - Added **Manual / None** grouping modes without discarding existing manual section data when switching modes.
 - Added optional manual section names with an understated line–label–line design, inline rename, collapse/expand and collapsed chat counts.
 - Added section menus for rename/clear name, collapse/expand, move up/down and delete. Automatic project sections expose collapse/expand without pretending to rename or move the underlying ChatGPT project.
 - Project and manual collapsed state is persisted locally and participates in layout Undo/Reset.
 - Project section headers now use only the project name, ignoring ChatGPT action labels such as **Abrir proyecto… / Open project…**.
 - Added the current extension version to the normal monitor footer while keeping it hidden in Compact mode.
+- Added a persistent open/closed **layout lock** in the monitor header. Locked mode blocks accidental drag/reorder, section editing/collapse, separator creation, panel movement and resizing while leaving normal chat actions available.
 
 ## 0.3.0 - 2026-09-19
 
