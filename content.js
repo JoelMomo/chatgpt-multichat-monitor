@@ -1896,11 +1896,23 @@
     addSeparatorButton.title = "Add separator";
     addSeparatorButton.setAttribute("aria-label", "Add separator");
 
+    lockButton = document.createElement("button");
+    lockButton.className = "header-tool lock-button";
+    lockButton.type = "button";
+
+    undoButton = document.createElement("button");
+    undoButton.className = "header-tool undo-header";
+    undoButton.type = "button";
+    undoButton.textContent = "↶";
+    undoButton.hidden = true;
+    undoButton.title = "Undo last layout change";
+    undoButton.setAttribute("aria-label", "Undo last layout change");
+
     collapseButton = document.createElement("button");
     collapseButton.className = "collapse";
     collapseButton.type = "button";
 
-    header.append(brand, summary, addSeparatorButton, collapseButton);
+    header.append(brand, summary, addSeparatorButton, undoButton, lockButton, collapseButton);
 
     list = document.createElement("div");
     list.className = "list";
@@ -1937,21 +1949,7 @@
     resizeHandle.setAttribute("role", "separator");
     resizeHandle.setAttribute("aria-label", "Resize monitor");
 
-    undoToast = document.createElement("div");
-    undoToast.className = "undo-toast";
-    undoToast.hidden = true;
-
-    undoToastLabel = document.createElement("span");
-    undoToastLabel.className = "undo-label";
-
-    const undoButton = document.createElement("button");
-    undoButton.type = "button";
-    undoButton.className = "undo-button";
-    undoButton.textContent = "Undo";
-    undoButton.setAttribute("aria-label", "Undo last layout change");
-
-    undoToast.append(undoToastLabel, undoButton);
-    panel.append(header, list, empty, foot, resizeHandle, undoToast);
+    panel.append(header, list, empty, foot, resizeHandle);
 
     floatingMenu = document.createElement("div");
     floatingMenu.className = "floating-menu";
@@ -1962,6 +1960,7 @@
 
     addSeparatorButton.addEventListener("click", (event) => {
       event.stopPropagation();
+      if (layoutLocked()) return;
       sendMessage({ type: "monitor-add-separator" }).then((response) => {
         if (response?.ok && response.undoId) showLayoutUndo("Separator added", response.undoId);
       });
@@ -1969,9 +1968,20 @@
 
     undoButton.addEventListener("click", (event) => {
       event.stopPropagation();
-      const undoId = undoToast?.dataset.undoId || "";
+      const undoId = currentUndoId || undoButton.dataset.undoId || "";
       hideLayoutUndo();
       if (undoId) sendMessage({ type: "monitor-undo-layout", undoId });
+    });
+
+    lockButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      settings.monitorLayoutLocked = !layoutLocked();
+      chrome.storage.local.set({
+        monitorLayoutLocked: settings.monitorLayoutLocked
+      });
+      finishLayoutDrag();
+      closeMenus();
+      render();
     });
 
     collapseButton.addEventListener("click", () => {
