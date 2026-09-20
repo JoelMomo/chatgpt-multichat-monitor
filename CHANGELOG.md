@@ -27,6 +27,7 @@
 - Project and manual collapsed state is persisted locally and participates in layout Undo/Reset.
 - Project section headers now use only the project name, ignoring ChatGPT action labels such as **Abrir proyecto… / Open project…**.
 - Added the current extension version to the normal monitor footer while keeping it hidden in Compact mode.
+- Working rows now show visible ChatGPT work phases with a continuous active-response timer. Active start/phase timestamps are persisted per conversation and restored across same-page refreshes and extension service-worker restarts.
 - Added a persistent open/closed **layout lock** in the monitor header. Locked mode blocks accidental drag/reorder, section editing/collapse, separator creation, panel movement and resizing while leaving normal chat actions available.
 
 ## 0.3.0 - 2026-09-19
