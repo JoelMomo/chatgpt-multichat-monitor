@@ -5,6 +5,7 @@ const DEFAULTS = {
   monitorAnimations: true,
   monitorOpacity: 1,
   monitorTheme: "dark",
+  monitorGroupMode: "project",
   monitorSoundsEnabled: true,
   monitorSoundDone: "pop",
   monitorSoundRetry: "potion",
@@ -16,6 +17,7 @@ const DEFAULTS = {
 const enabled = document.getElementById("enabled");
 const showIdle = document.getElementById("showIdle");
 const compact = document.getElementById("compact");
+const groupMode = document.getElementById("groupMode");
 const theme = document.getElementById("theme");
 const opacity = document.getElementById("opacity");
 const opacityValue = document.getElementById("opacityValue");
@@ -219,6 +221,9 @@ async function load() {
   enabled.checked = settings.monitorEnabled !== false;
   showIdle.checked = settings.monitorShowIdle === true;
   compact.checked = settings.monitorCompact === true;
+  groupMode.value = ["project", "manual", "none"].includes(settings.monitorGroupMode)
+    ? settings.monitorGroupMode
+    : DEFAULTS.monitorGroupMode;
   theme.value = settings.monitorTheme || DEFAULTS.monitorTheme;
   opacity.value = settings.monitorOpacity ?? DEFAULTS.monitorOpacity;
   updateOpacityValue(opacity.value);
@@ -249,6 +254,10 @@ showIdle.addEventListener("change", () => {
 
 compact.addEventListener("change", () => {
   chrome.storage.local.set({ monitorCompact: compact.checked });
+});
+
+groupMode.addEventListener("change", () => {
+  chrome.storage.local.set({ monitorGroupMode: groupMode.value });
 });
 
 theme.addEventListener("change", () => {
