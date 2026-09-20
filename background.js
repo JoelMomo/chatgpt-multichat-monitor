@@ -621,13 +621,26 @@ function upsertState(payload, tab) {
 
   let startedAt = payload.startedAt ?? previous.startedAt ?? null;
   let finishedAt = payload.finishedAt ?? previous.finishedAt ?? null;
+  let workPhase = typeof payload.workPhase === "string"
+    ? payload.workPhase.trim().replace(/\s+/g, " ").slice(0, 48)
+    : (state === "working" && previous.state === "working" ? String(previous.workPhase || "") : "");
+  let phaseStartedAt = Number.isFinite(Number(payload.phaseStartedAt))
+    ? Number(payload.phaseStartedAt)
+    : (state === "working" && previous.state === "working" ? previous.phaseStartedAt ?? null : null);
 
   if (state === "working" && previous.state !== "working" && !payload.startedAt) {
     startedAt = now;
     finishedAt = null;
   }
+  if (state === "working" && !phaseStartedAt) {
+    phaseStartedAt = startedAt || now;
+  }
   if (["finished", "interrupted", "retry", "attention", "error"].includes(state) && !finishedAt) {
     finishedAt = now;
+  }
+  if (state !== "working") {
+    workPhase = "";
+    phaseStartedAt = null;
   }
   if (state === "idle" || state === "draft") {
     startedAt = null;
@@ -654,6 +667,8 @@ function upsertState(payload, tab) {
     state,
     startedAt,
     finishedAt,
+    workPhase,
+    phaseStartedAt,
     updatedAt: payload.updatedAt || now,
     projectKnown: projectKnown || (sameChat && previous.projectKnown === true),
     projectKey,
