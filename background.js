@@ -357,11 +357,13 @@ function rank(state) {
 }
 
 function projectGroupKey(chat) {
-  return chat.projectKey ? "project:" + chat.projectKey : "project:none";
+  if (chat.projectKey) return "project:" + chat.projectKey;
+  return chat.projectKnown === true ? "project:none" : "project:unknown";
 }
 
 function projectGroupLabel(chat) {
-  return String(chat.projectName || "").trim() || "No project";
+  if (chat.projectName) return String(chat.projectName).trim();
+  return chat.projectKnown === true ? "No project" : "Other chats";
 }
 
 function snapshot() {
