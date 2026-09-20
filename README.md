@@ -271,6 +271,7 @@ The popup lets you:
 - Enable / disable the floating monitor
 - Show / hide idle chats
 - Enable Compact mode
+- Lock / unlock layout editing from the monitor header
 - Choose **By project**, **Manual** or **None** chat grouping
 - Choose System, Dark or Light theme
 - Adjust floating monitor opacity from 35% to 100%
@@ -298,9 +299,10 @@ Stored data is limited to:
 - Extension settings
 - Local aliases / pin / hidden preferences
 - Manual chat order
+- Custom project order in the monitor
 - Manual separator positions, names and per-chat section assignment
 - Section collapsed/expanded state
-- Grouping mode
+- Grouping mode and layout-lock state
 - Project membership/name detection stays local. Names are read from ChatGPT while tabs are open; collapsed project-section state is stored locally against the detected project identifier, not sent anywhere
 - Recent activity metadata
 - Update-check timestamps, latest known release version and dismissed-version state
