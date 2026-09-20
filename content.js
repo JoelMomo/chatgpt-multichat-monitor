@@ -1667,7 +1667,7 @@
 
   function setupDrag() {
     header.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0 || event.target.closest("button")) return;
+      if (layoutLocked() || event.button !== 0 || event.target.closest("button")) return;
       const rect = panel.getBoundingClientRect();
       dragging = {
         pointerId: event.pointerId,
@@ -1740,7 +1740,8 @@
     };
 
     resizeHandle.addEventListener("mousedown", (event) => {
-      if (event.button !== 0 ||
+      if (layoutLocked() ||
+          event.button !== 0 ||
           settings.monitorCollapsed === true ||
           settings.monitorCompact === true) {
         return;
@@ -1984,6 +1985,7 @@
 
     autoSizeButton.addEventListener("click", (event) => {
       event.stopPropagation();
+      if (layoutLocked()) return;
       settings.monitorSize = null;
       chrome.storage.local.set({ monitorSize: null });
       render();
