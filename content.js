@@ -1381,15 +1381,18 @@
     if (!panel) return;
     const manualSize = normalizedPanelSize(size);
     const canResize = settings.monitorCollapsed !== true && settings.monitorCompact !== true;
+    const editAllowed = !layoutLocked();
 
     panel.classList.toggle("manual-size", canResize && !!manualSize);
     panel.classList.toggle("auto-fit", canResize && !manualSize);
-    if (resizeHandle) resizeHandle.hidden = !canResize;
+    if (resizeHandle) resizeHandle.hidden = !canResize || !editAllowed;
     if (autoSizeButton) {
-      autoSizeButton.disabled = !canResize || !manualSize;
-      autoSizeButton.title = manualSize
-        ? "Fit monitor to the visible chats"
-        : "Monitor already follows the visible chats";
+      autoSizeButton.disabled = !editAllowed || !canResize || !manualSize;
+      autoSizeButton.title = !editAllowed
+        ? "Unlock layout to change monitor size"
+        : manualSize
+          ? "Fit monitor to the visible chats"
+          : "Monitor already follows the visible chats";
     }
 
     if (!canResize || !manualSize) {
@@ -1403,6 +1406,7 @@
   }
 
   function updateSeparatorNode(node, descriptor) {
+    const locked = layoutLocked();
     node.descriptor = descriptor;
     node.row.className = "section-separator";
     node.row.classList.toggle("project-section", descriptor.kind === "project");
@@ -1410,24 +1414,38 @@
     node.row.classList.toggle("unnamed-section", !descriptor.name);
     node.row.dataset.groupId = descriptor.uiId;
     node.row.dataset.sectionId = descriptor.kind === "manual" ? descriptor.id : descriptor.uiId;
-    node.row.draggable = descriptor.kind === "manual";
-    node.row.title = descriptor.kind === "manual"
-      ? "Drag section · double-click to rename"
-      : "ChatGPT project";
-    if (descriptor.kind === "manual") node.row.dataset.separatorId = descriptor.id;
-    else delete node.row.dataset.separatorId;
+    node.row.draggable = !locked && ["manual", "project"].includes(descriptor.kind);
+
+    if (descriptor.kind === "manual") {
+      node.row.dataset.separatorId = descriptor.id;
+      delete node.row.dataset.projectId;
+      node.row.title = locked
+        ? "Layout locked"
+        : "Drag section · double-click to rename";
+    } else {
+      node.row.dataset.projectId = descriptor.uiId;
+      delete node.row.dataset.separatorId;
+      node.row.title = locked
+        ? "Layout locked"
+        : "Drag project to reorder";
+    }
 
     node.caption.textContent = descriptor.name || "";
     node.caption.hidden = !descriptor.name;
-    node.caption.title = descriptor.kind === "manual"
-      ? "Click to collapse or expand · double-click to rename"
-      : "Click to collapse or expand";
+    node.caption.title = locked
+      ? "Layout locked"
+      : descriptor.kind === "manual"
+        ? "Click to collapse or expand · double-click to rename"
+        : "Click to collapse or expand";
+    node.caption.setAttribute("aria-disabled", locked ? "true" : "false");
     node.input.hidden = true;
+    node.input.disabled = locked;
     node.count.textContent = descriptor.collapsed && descriptor.count
       ? descriptor.count + " chat" + (descriptor.count === 1 ? "" : "s")
       : "";
     node.count.hidden = !node.count.textContent;
-    node.more.title = descriptor.kind === "manual" ? "Section options" : "Project section options";
+    node.more.hidden = locked;
+    node.more.title = descriptor.kind === "manual" ? "Section options" : "Project options";
   }
 
   function projectDescriptors(visible) {
@@ -1464,21 +1482,31 @@
     if (settings.monitorEnabled === false) return;
 
     const mode = activeGroupMode();
+    const locked = layoutLocked();
     panel.dataset.groupMode = mode;
     panel.classList.toggle("collapsed", settings.monitorCollapsed === true);
     panel.classList.toggle("compact", settings.monitorCompact === true);
     panel.classList.toggle("no-animations", settings.monitorAnimations === false);
+    panel.classList.toggle("layout-locked", locked);
     applyPanelSize();
     applyAppearance();
     collapseButton.textContent = settings.monitorCollapsed ? "+" : "-";
     collapseButton.title = settings.monitorCollapsed ? "Expand monitor" : "Collapse monitor";
+    lockButton.textContent = locked ? "🔒" : "🔓";
+    lockButton.title = locked ? "Unlock layout" : "Lock layout";
+    lockButton.setAttribute("aria-label", locked ? "Unlock layout" : "Lock layout");
+    lockButton.classList.toggle("is-locked", locked);
     addSeparatorButton.hidden = mode !== "manual";
+    addSeparatorButton.disabled = locked;
+    addSeparatorButton.title = locked ? "Unlock layout to add a separator" : "Add separator";
     if (footCopy) {
-      footCopy.textContent = mode === "project"
-        ? "Grouped automatically by ChatGPT project"
-        : mode === "manual"
-          ? "Drag chat text or sections to reorganize"
-          : "Click to switch · drag chat text to reorder";
+      footCopy.textContent = locked
+        ? "Layout locked"
+        : mode === "project"
+          ? "Drag project headers to reorder"
+          : mode === "manual"
+            ? "Drag chat text or sections to reorganize"
+            : "Click to switch · drag chat text to reorder";
     }
 
     const now = Date.now();
@@ -1513,10 +1541,17 @@
       if (chat.url === location.href) node.row.classList.add("current");
       if (chat.pinned) node.row.classList.add("pinned");
 
-      const canDrag = mode !== "project";
+      const canDrag = !locked && mode !== "project";
       node.copy.draggable = canDrag;
-      node.copy.title = canDrag ? "Drag to reorder" : "Project grouping is automatic";
-      node.copy.setAttribute("aria-label", canDrag ? "Drag chat to reorder" : "Chat project grouping is automatic");
+      node.copy.title = locked
+        ? "Layout locked"
+        : canDrag
+          ? "Drag to reorder"
+          : "Chats stay inside their ChatGPT project";
+      node.copy.setAttribute(
+        "aria-label",
+        locked ? "Chat layout locked" : canDrag ? "Drag chat to reorder" : "Chat project grouping is automatic"
+      );
 
       node.title.textContent = (chat.pinned ? "📌 " : "") + (chat.displayTitle || chat.title || "ChatGPT");
       node.meta.textContent = statusText(chat, now);
