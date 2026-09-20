@@ -92,7 +92,7 @@
 ## What's new in 0.4.0
 
 - **Auto size + manual resize:** the monitor follows the number of visible chats by default, while a custom size remains available whenever you drag the resize handle. The footer's **Auto size** button returns to chat-driven sizing.
-- **Appearance controls:** choose System, Dark or Light theme and adjust monitor opacity from the popup.
+- **Appearance controls:** choose System, Dark, Light, Cozy, Neon or Minimal theme and adjust monitor opacity from the popup. Optional **Dim when inactive** fades the monitor until you hover or focus it.
 - **Smart priority order:** chats automatically move by priority: Error → Retry → Attention → Done → Pending → Working → Stopped → Draft → Idle. Manual drag order behaves as before without separators; inside separator blocks, state priority remains active.
 - **Pending:** right-click an Idle LED to mark a chat for follow-up. Pending uses a distinct pink LED, pulses much more slowly than Working, and stays marked locally until you clear it. The invisible LED hit target is larger than the visible dot for easier interaction.
 - **Automatic project groups:** **By project** is now the default grouping mode. The extension detects ChatGPT project routes and sidebar links locally, creates project headers automatically and keeps **Other chats / No project** as safe fallbacks when membership is unavailable or absent. Project headers can now be dragged to persist a custom project order.
@@ -128,7 +128,7 @@ ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shar
 - In **None**, section headers are hidden and the existing global manual order remains available. Switching modes does not erase the stored manual sections.
 - Right-click an Idle LED to mark that conversation as **Pending**; right-click the pink Pending LED again to clear it.
 - Auto-fitting overlay that follows the visible chats, while still supporting persistent manual resizing, compact mode and collapse.
-- System / Dark / Light themes plus adjustable monitor opacity.
+- System / Dark / Light plus Cozy, Neon and Minimal themes, with adjustable opacity and optional hover-focus dimming.
 - Per-state local sound alerts with volume and test controls.
 - Small local recent-activity history.
 - Browser badge and keyboard shortcuts for fast navigation.
@@ -273,8 +273,9 @@ The popup lets you:
 - Enable Compact mode
 - Lock / unlock layout editing from the monitor header
 - Choose **By project**, **Manual** or **None** chat grouping
-- Choose System, Dark or Light theme
+- Choose System, Dark, Light, Cozy, Neon or Minimal theme
 - Adjust floating monitor opacity from 35% to 100%
+- Optionally dim the monitor while the pointer is away, restoring full configured opacity on hover/focus
 - Disable state animations
 - Reset the floating monitor position or custom size
 - Restore hidden chats

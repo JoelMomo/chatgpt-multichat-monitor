@@ -4,7 +4,8 @@
 
 - Added persistent panel resizing from a discreet bottom-right handle, with viewport clamping and a **Reset size** control.
 - Added an **Opacity** slider in the popup, adjustable from 35% to 100% and applied live to the floating monitor.
-- Added **System**, **Dark** and **Light** themes for both the floating monitor and the extension popup.
+- Added **System**, **Dark**, **Light**, **Cozy**, **Neon** and **Minimal** themes for both the floating monitor and the extension popup.
+- Added optional **Dim when inactive** behavior: the monitor uses reduced opacity while the pointer is away and returns to the configured opacity on hover/focus.
 - Compact and collapsed modes temporarily use their fixed dimensions and restore the saved custom size when returning to normal mode.
 - The monitor now auto-fits its height to the visible chats until you manually resize it; a bottom **Auto size** button returns a custom-sized panel to chat-driven sizing.
 - **Auto size** now stays visible in the monitor footer and is disabled only while the panel is already following its automatic chat-driven size.

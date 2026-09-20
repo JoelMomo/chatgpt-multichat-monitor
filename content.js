@@ -19,6 +19,7 @@
     monitorCompact: false,
     monitorAnimations: true,
     monitorOpacity: 1,
+    monitorHoverFocus: false,
     monitorTheme: "dark",
     monitorGroupMode: "project",
     monitorSectionUi: {},
@@ -1348,7 +1349,7 @@
   }
 
   function resolvedTheme(value = settings.monitorTheme) {
-    if (value === "light" || value === "dark") return value;
+    if (["light", "dark", "cozy", "neon", "minimal"].includes(value)) return value;
     return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
   }
 
@@ -1372,9 +1373,15 @@
     if (!host || !panel) return;
     const theme = resolvedTheme();
     host.dataset.theme = theme;
-    const opacity = normalizedOpacity();
-    panel.style.opacity = String(opacity);
-    if (floatingMenu) floatingMenu.style.opacity = String(opacity);
+
+    const activeOpacity = normalizedOpacity();
+    const idleOpacity = settings.monitorHoverFocus === true
+      ? Math.max(0.25, activeOpacity * 0.68)
+      : activeOpacity;
+
+    panel.style.setProperty("--monitor-active-opacity", String(activeOpacity));
+    panel.style.setProperty("--monitor-idle-opacity", String(idleOpacity));
+    if (floatingMenu) floatingMenu.style.opacity = String(activeOpacity);
   }
 
   function applyPanelSize(size = settings.monitorSize) {
@@ -1787,7 +1794,8 @@
       ":host{all:initial}*{box-sizing:border-box}" +
       "#panel{position:fixed;display:flex;flex-direction:column;width:318px;max-height:min(480px,70vh);overflow:visible;pointer-events:auto;" +
       "font:13px/1.35 system-ui,-apple-system,'Segoe UI',sans-serif;color:#f5f7fa;background:#12171f;" +
-      "border:1px solid #303846;border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,.34)}" +
+      "border:1px solid #303846;border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,.34);opacity:var(--monitor-idle-opacity,1);transition:opacity .16s ease}" +
+      "#panel:hover,#panel:focus-within,#panel.hover-active,#panel.dragging,#panel.resizing{opacity:var(--monitor-active-opacity,1)}" +
       "#panel.dragging,#panel.resizing{user-select:none;box-shadow:0 20px 54px rgba(0,0,0,.42)}" +
       ".head{height:46px;display:flex;align-items:center;gap:8px;padding:0 9px 0 12px;cursor:grab;" +
       "border-bottom:1px solid #29313d}.head:active{cursor:grabbing}" +
@@ -1857,6 +1865,9 @@
       ":host([data-theme='light']) .empty{color:#748196}:host([data-theme='light']) .foot{color:#7c899b;border-top-color:#dce3ec}:host([data-theme='light']) .version-label{color:#99a4b2}" +
       ":host([data-theme='light']) .auto-size-button{border-color:#ccd5df;background:#f8fafc;color:#5c6a7c}:host([data-theme='light']) .auto-size-button:hover{background:#e9eff5;color:#182331;border-color:#b8c4d1}" +
       ":host([data-theme='light']) .resize-handle{background:linear-gradient(135deg,transparent 0 52%,#7d8998 53% 58%,transparent 59% 68%,#7d8998 69% 74%,transparent 75%)}" +
+      ":host([data-theme='cozy']) *{font-family:'Trebuchet MS',system-ui,sans-serif}:host([data-theme='cozy']) #panel{color:#f5eadf;background:#2c2621;border-color:#5b4b3f;box-shadow:0 16px 44px rgba(30,18,10,.38)}:host([data-theme='cozy']) .head{border-bottom-color:#4a3d33}:host([data-theme='cozy']) .chat-row:hover,:host([data-theme='cozy']) .chat-row.current{background:#3a312a}:host([data-theme='cozy']) .separator-rule{background:#655347}:host([data-theme='cozy']) .separator-caption{color:#c0a992}:host([data-theme='cozy']) .more:hover,:host([data-theme='cozy']) .header-tool:hover,:host([data-theme='cozy']) .collapse:hover{background:#43382f;color:#fff4e9}:host([data-theme='cozy']) .foot{color:#b29b86;border-top-color:#4a3d33}:host([data-theme='cozy']) .floating-menu{border-color:#5b4b3f;background:#302821;box-shadow:0 10px 26px rgba(25,14,8,.36)}:host([data-theme='cozy']) .menu-action{color:#f0e2d4}:host([data-theme='cozy']) .menu-action:hover{background:#43382f}" +
+      ":host([data-theme='neon']) *{font-family:Consolas,'Courier New',monospace}:host([data-theme='neon']) #panel{color:#eaffff;background:#07101a;border-color:#24536c;box-shadow:0 0 0 1px rgba(0,245,212,.06),0 18px 46px rgba(0,0,0,.5)}:host([data-theme='neon']) .head{border-bottom-color:#173d52}:host([data-theme='neon']) .brand{color:#bffff8}:host([data-theme='neon']) .chat-row:hover,:host([data-theme='neon']) .chat-row.current{background:#0d1d2b}:host([data-theme='neon']) .separator-rule{background:#244b64}:host([data-theme='neon']) .separator-caption{color:#8edbd5}:host([data-theme='neon']) .more:hover,:host([data-theme='neon']) .header-tool:hover,:host([data-theme='neon']) .collapse:hover{background:#102737;color:#00f5d4}:host([data-theme='neon']) .lock-button.is-locked{color:#d08cff}:host([data-theme='neon']) .foot{color:#7299aa;border-top-color:#173d52}:host([data-theme='neon']) .auto-size-button{border-color:#24536c;background:#081722;color:#8edbd5}:host([data-theme='neon']) .auto-size-button:hover{background:#102737;color:#00f5d4}:host([data-theme='neon']) .floating-menu{border-color:#24536c;background:#07111b;box-shadow:0 0 24px rgba(0,245,212,.09)}:host([data-theme='neon']) .menu-action{color:#dffcff}:host([data-theme='neon']) .menu-action:hover{background:#102737;color:#00f5d4}" +
+      ":host([data-theme='minimal']) *{font-family:Arial,Helvetica,sans-serif}:host([data-theme='minimal']) #panel{color:#222;background:#fbfbfa;border-color:#d9d9d6;border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.12)}:host([data-theme='minimal']) .head{border-bottom-color:#e2e2df}:host([data-theme='minimal']) .count-badge{box-shadow:none}:host([data-theme='minimal']) .chat-row:hover,:host([data-theme='minimal']) .chat-row.current{background:#f0f0ed}:host([data-theme='minimal']) .separator-rule{background:#d3d3d0}:host([data-theme='minimal']) .separator-caption{color:#737373}:host([data-theme='minimal']) .more,:host([data-theme='minimal']) .header-tool,:host([data-theme='minimal']) .collapse{color:#6d6d6d}:host([data-theme='minimal']) .more:hover,:host([data-theme='minimal']) .header-tool:hover,:host([data-theme='minimal']) .collapse:hover{background:#ececea;color:#222}:host([data-theme='minimal']) .lock-button.is-locked{color:#444}:host([data-theme='minimal']) .meta{color:#777}:host([data-theme='minimal']) .foot{color:#777;border-top-color:#e2e2df}:host([data-theme='minimal']) .version-label{color:#999}:host([data-theme='minimal']) .auto-size-button{border-color:#d2d2cf;background:#fff;color:#555}:host([data-theme='minimal']) .auto-size-button:hover{background:#ececea;color:#222}:host([data-theme='minimal']) .floating-menu{border-color:#d9d9d6;background:#fff;box-shadow:0 10px 24px rgba(0,0,0,.12)}:host([data-theme='minimal']) .menu-action{color:#333}:host([data-theme='minimal']) .menu-action:hover{background:#efefed}" +
       ".flash{animation:stateflash 1.2s ease-out 1}.no-animations .state-working .dot,.no-animations .state-pending .dot,.no-animations .flash{animation:none}:host([data-theme='light']) .flash{animation-name:stateflashlight}" +
       "@keyframes workingpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.52;transform:scale(.82)}}@keyframes pendingpulse{0%,100%{opacity:1;transform:scale(1);box-shadow:0 0 0 3px rgba(244,114,182,.08),0 0 9px rgba(244,114,182,.18)}50%{opacity:.62;transform:scale(.9);box-shadow:0 0 0 4px rgba(244,114,182,.05),0 0 13px rgba(244,114,182,.12)}}" +
       "@keyframes stateflash{0%{background:#2b3440}100%{background:transparent}}@keyframes stateflashlight{0%{background:#dce7f2}100%{background:transparent}}";
@@ -1958,6 +1969,20 @@
 
     shadow.append(style, panel, floatingMenu);
     document.documentElement.appendChild(host);
+
+    const setHoverFocusActive = (active) => {
+      panel.classList.toggle("hover-active", active);
+    };
+    panel.addEventListener("pointerenter", () => setHoverFocusActive(true));
+    panel.addEventListener("pointerleave", (event) => {
+      if (floatingMenu?.contains(event.relatedTarget)) return;
+      setHoverFocusActive(false);
+    });
+    floatingMenu.addEventListener("pointerenter", () => setHoverFocusActive(true));
+    floatingMenu.addEventListener("pointerleave", (event) => {
+      if (panel.contains(event.relatedTarget)) return;
+      setHoverFocusActive(false);
+    });
 
     addSeparatorButton.addEventListener("click", (event) => {
       event.stopPropagation();

@@ -4,6 +4,7 @@ const DEFAULTS = {
   monitorCompact: false,
   monitorAnimations: true,
   monitorOpacity: 1,
+  monitorHoverFocus: false,
   monitorTheme: "dark",
   monitorGroupMode: "project",
   monitorSoundsEnabled: true,
@@ -21,6 +22,7 @@ const groupMode = document.getElementById("groupMode");
 const theme = document.getElementById("theme");
 const opacity = document.getElementById("opacity");
 const opacityValue = document.getElementById("opacityValue");
+const hoverFocus = document.getElementById("hoverFocus");
 const animations = document.getElementById("animations");
 
 const resetPosition = document.getElementById("resetPosition");
@@ -63,7 +65,7 @@ const SOUND_CONTROLS = {
 };
 
 function resolvedTheme(value) {
-  if (value === "light" || value === "dark") return value;
+  if (["light", "dark", "cozy", "neon", "minimal"].includes(value)) return value;
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
@@ -227,6 +229,7 @@ async function load() {
   theme.value = settings.monitorTheme || DEFAULTS.monitorTheme;
   opacity.value = settings.monitorOpacity ?? DEFAULTS.monitorOpacity;
   updateOpacityValue(opacity.value);
+  hoverFocus.checked = settings.monitorHoverFocus === true;
   applyPopupTheme(theme.value);
   animations.checked = settings.monitorAnimations !== false;
 
@@ -269,6 +272,10 @@ opacity.addEventListener("input", () => {
   const value = Number(opacity.value);
   updateOpacityValue(value);
   chrome.storage.local.set({ monitorOpacity: value });
+});
+
+hoverFocus.addEventListener("change", () => {
+  chrome.storage.local.set({ monitorHoverFocus: hoverFocus.checked });
 });
 
 animations.addEventListener("change", () => {
