@@ -96,6 +96,7 @@
 - **Smart priority order:** chats automatically move by priority: Error → Retry → Attention → Done → Pending → Working → Stopped → Draft → Idle. Manual drag order behaves as before without separators; inside separator blocks, state priority remains active.
 - **Pending:** right-click an Idle LED to mark a chat for follow-up. Pending uses a distinct pink LED, pulses much more slowly than Working, and stays marked locally until you clear it. The invisible LED hit target is larger than the visible dot for easier interaction.
 - **Automatic project groups:** **By project** is now the default grouping mode. The extension detects ChatGPT project routes and sidebar links locally, creates project headers automatically and keeps **Other chats / No project** as safe fallbacks when membership is unavailable or absent. Project headers can now be dragged to persist a custom project order.
+- **Active work timer:** Working chats show the visible ChatGPT phase when available (for example **Analizando / Analyzing**, search or tool execution) plus total active time. The start timestamp is persisted per conversation, so refreshing the same ChatGPT page restores the same timer instead of starting from zero.
 - **Cleaner project titles:** in **By project**, automatic chat titles omit a repeated `Project name ·` prefix because the project header already provides that context. Custom aliases remain unchanged.
 - **Grouping modes:** choose **By project**, **Manual** or **None** in the popup. Manual separators are preserved when you temporarily switch modes.
 - **Named, collapsible sections:** manual separators can be named with a double-click or their section menu, use a quiet `──── NAME ────` treatment, and can be collapsed. Automatic project groups can be collapsed too.
@@ -118,6 +119,7 @@
 ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shares the status of your other open ChatGPT tabs.
 
 - Live **Working** state with elapsed time.
+- Reload-safe timing for the current response: active start/phase timestamps are kept locally by conversation and restored before the refreshed page evaluates its state.
 - **Done** stays lime until you actually visit that chat.
 - A non-empty prompt composer is shown as **Draft** instead of Idle; active generation still remains **Working** while you prepare the next prompt.
 - Detects recoverable **Retry needed** states, likely **Needs attention** responses and visible **Errors**.
@@ -312,7 +314,7 @@ Stored data is limited to:
 
 ## Limitations
 
-ChatGPT does not expose a public browser API for conversation generation state or project membership. Activity and project grouping are inferred from the visible interface and ChatGPT's own project URLs/sidebar links, so a future ChatGPT frontend change may require detector updates.
+ChatGPT does not expose a public browser API for conversation generation state, internal compute time or project membership. Activity, visible work phases and project grouping are inferred from the browser interface and ChatGPT's own URLs/sidebar links, so a future ChatGPT frontend change may require detector updates. Active response timing metadata is stored locally only while needed so refreshing the same conversation can restore the running timer.
 
 **Needs attention** is intentionally conservative and heuristic. A response ending in a question can be classified as attention even when a reply is not strictly required.
 
