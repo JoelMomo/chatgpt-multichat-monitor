@@ -62,6 +62,7 @@
   let collapseButton = null;
   let resizeHandle = null;
   let autoSizeButton = null;
+  let footCopy = null;
   let dragging = null;
   let resizing = null;
   let openMenuTabId = null;
@@ -624,7 +625,8 @@
   }
 
   function projectSectionKey(chat) {
-    return "project:" + (chat.projectKey || "none");
+    if (chat.projectKey) return "project:" + chat.projectKey;
+    return chat.projectKnown === true ? "project:none" : "project:unknown";
   }
 
   function layoutTokenForElement(element) {
@@ -1284,12 +1286,66 @@
     panel.style.height = Math.round(manualSize.height) + "px";
   }
 
+  function updateSeparatorNode(node, descriptor) {
+    node.descriptor = descriptor;
+    node.row.className = "section-separator";
+    node.row.classList.toggle("project-section", descriptor.kind === "project");
+    node.row.classList.toggle("collapsed-section", descriptor.collapsed === true);
+    node.row.classList.toggle("unnamed-section", !descriptor.name);
+    node.row.dataset.groupId = descriptor.uiId;
+    node.row.dataset.sectionId = descriptor.kind === "manual" ? descriptor.id : descriptor.uiId;
+    node.row.draggable = descriptor.kind === "manual";
+    if (descriptor.kind === "manual") node.row.dataset.separatorId = descriptor.id;
+    else delete node.row.dataset.separatorId;
+
+    node.caption.textContent = descriptor.name || "";
+    node.caption.hidden = !descriptor.name;
+    node.caption.title = descriptor.kind === "manual"
+      ? "Click to collapse or expand · double-click to rename"
+      : "Click to collapse or expand";
+    node.input.hidden = true;
+    node.count.textContent = descriptor.collapsed && descriptor.count
+      ? descriptor.count + " chat" + (descriptor.count === 1 ? "" : "s")
+      : "";
+    node.count.hidden = !node.count.textContent;
+    node.more.title = descriptor.kind === "manual" ? "Section options" : "Project section options";
+  }
+
+  function projectDescriptors(visible) {
+    const byProject = new Map();
+    for (const chat of visible) {
+      const uiId = projectSectionKey(chat);
+      let descriptor = byProject.get(uiId);
+      if (!descriptor) {
+        const fallbackName = chat.projectKnown === true ? "No project" : "Other chats";
+        descriptor = {
+          uiId,
+          id: uiId,
+          kind: "project",
+          name: String(chat.projectName || "").trim() || fallbackName,
+          collapsed: sectionUiState(uiId).collapsed === true,
+          chats: []
+        };
+        byProject.set(uiId, descriptor);
+      } else if (!descriptor.name && chat.projectName) {
+        descriptor.name = chat.projectName;
+      }
+      descriptor.chats.push(chat);
+    }
+    return [...byProject.values()].map((descriptor) => ({
+      ...descriptor,
+      count: descriptor.chats.length
+    }));
+  }
+
   function render() {
     if (!panel || !host) return;
 
     host.style.display = settings.monitorEnabled === false ? "none" : "block";
     if (settings.monitorEnabled === false) return;
 
+    const mode = activeGroupMode();
+    panel.dataset.groupMode = mode;
     panel.classList.toggle("collapsed", settings.monitorCollapsed === true);
     panel.classList.toggle("compact", settings.monitorCompact === true);
     panel.classList.toggle("no-animations", settings.monitorAnimations === false);
@@ -1297,47 +1353,51 @@
     applyAppearance();
     collapseButton.textContent = settings.monitorCollapsed ? "+" : "-";
     collapseButton.title = settings.monitorCollapsed ? "Expand monitor" : "Collapse monitor";
+    addSeparatorButton.hidden = mode !== "manual";
+    if (footCopy) {
+      footCopy.textContent = mode === "project"
+        ? "Grouped automatically by ChatGPT project"
+        : mode === "manual"
+          ? "Drag chat text or sections to reorganize"
+          : "Click to switch · drag chat text to reorder";
+    }
 
     const now = Date.now();
     const visible = chats.filter((chat) => isRecent(chat, now));
-    const hasContent = visible.length > 0 || separators.length > 0;
+    const manualHasSections = mode === "manual" && separators.length > 0;
+    const hasContent = visible.length > 0 || manualHasSections;
     panel.classList.toggle("is-empty", !hasContent);
     updateHeaderSummary(visible);
 
     const visibleIds = new Set(visible.map((chat) => chat.tabId));
-    const separatorIds = new Set(separators.map((separator) => separator.id));
-
     for (const [tabId, node] of rowNodes) {
       if (!visibleIds.has(tabId)) {
         node.row.remove();
         rowNodes.delete(tabId);
         renderedStates.delete(tabId);
-      }
-    }
-    for (const [id, node] of separatorNodes) {
-      if (!separatorIds.has(id)) {
+      } else {
         node.row.remove();
-        separatorNodes.delete(id);
       }
     }
+    for (const node of separatorNodes.values()) node.row.remove();
     for (const zone of sectionDropNodes.values()) zone.remove();
     sectionDropNodes.clear();
 
-    const groups = new Map([["", []]]);
-    for (const separator of separators) groups.set(separator.id, []);
-    for (const chat of visible) {
-      const section = groups.has(chat.section) ? chat.section : "";
-      groups.get(section).push(chat);
-    }
+    const desiredSeparatorIds = new Set();
 
-    const appendChat = (chat) => {
+    const appendChat = (chat, sectionId = "") => {
       const node = rowNodes.get(chat.tabId) || createRow(chat.tabId);
       node.chat = chat;
       node.row.dataset.chatKey = chat.chatKey;
-      node.row.dataset.sectionId = groups.has(chat.section) ? chat.section : "";
+      node.row.dataset.sectionId = sectionId;
       node.row.className = "chat-row state-" + chat.state;
       if (chat.url === location.href) node.row.classList.add("current");
       if (chat.pinned) node.row.classList.add("pinned");
+
+      const canDrag = mode !== "project";
+      node.copy.draggable = canDrag;
+      node.copy.title = canDrag ? "Drag to reorder" : "Project grouping is automatic";
+      node.copy.setAttribute("aria-label", canDrag ? "Drag chat to reorder" : "Chat project grouping is automatic");
 
       node.title.textContent = (chat.pinned ? "📌 " : "") + (chat.displayTitle || chat.title || "ChatGPT");
       node.meta.textContent = statusText(chat, now);
@@ -1356,19 +1416,61 @@
       list.appendChild(node.row);
     };
 
-    const rootChats = groups.get("");
-    for (const chat of rootChats) appendChat(chat);
-    if (separators.length) {
-      list.appendChild(createSectionDropzone("", rootChats.length === 0));
+    const appendDescriptor = (descriptor) => {
+      desiredSeparatorIds.add(descriptor.uiId);
+      const node = separatorNodes.get(descriptor.uiId) || createSeparatorRow(descriptor.uiId);
+      updateSeparatorNode(node, descriptor);
+      list.appendChild(node.row);
+      if (!descriptor.collapsed) {
+        for (const chat of descriptor.chats) {
+          appendChat(chat, descriptor.kind === "manual" ? descriptor.id : descriptor.uiId);
+        }
+      } else {
+        for (const chat of descriptor.chats) renderedStates.set(chat.tabId, chat.state);
+      }
+      return node;
+    };
+
+    if (mode === "project") {
+      for (const descriptor of projectDescriptors(visible)) appendDescriptor(descriptor);
+    } else if (mode === "manual") {
+      const groups = new Map([["", []]]);
+      for (const separator of separators) groups.set(separator.id, []);
+      for (const chat of visible) {
+        const section = groups.has(chat.section) ? chat.section : "";
+        groups.get(section).push(chat);
+      }
+
+      const rootChats = groups.get("");
+      for (const chat of rootChats) appendChat(chat, "");
+      if (separators.length) {
+        list.appendChild(createSectionDropzone("", rootChats.length === 0));
+      }
+
+      for (const separator of separators) {
+        const sectionChats = groups.get(separator.id);
+        const uiId = "manual:" + separator.id;
+        const descriptor = {
+          uiId,
+          id: separator.id,
+          kind: "manual",
+          name: String(separator.name || "").trim(),
+          collapsed: sectionUiState(uiId).collapsed === true || separator.collapsed === true,
+          chats: sectionChats,
+          count: sectionChats.length
+        };
+        appendDescriptor(descriptor);
+        list.appendChild(createSectionDropzone(separator.id, sectionChats.length === 0 || descriptor.collapsed));
+      }
+    } else {
+      for (const chat of visible) appendChat(chat, "");
     }
 
-    for (const separator of separators) {
-      const node = separatorNodes.get(separator.id) || createSeparatorRow(separator.id);
-      node.row.className = "section-separator";
-      list.appendChild(node.row);
-      const sectionChats = groups.get(separator.id);
-      for (const chat of sectionChats) appendChat(chat);
-      list.appendChild(createSectionDropzone(separator.id, sectionChats.length === 0));
+    for (const [id, node] of separatorNodes) {
+      if (!desiredSeparatorIds.has(id)) {
+        node.row.remove();
+        separatorNodes.delete(id);
+      }
     }
 
     empty.hidden = hasContent;
@@ -1656,7 +1758,7 @@
     const foot = document.createElement("div");
     foot.className = "foot";
 
-    const footCopy = document.createElement("span");
+    footCopy = document.createElement("span");
     footCopy.className = "foot-copy";
     footCopy.textContent = "Click to switch · drag the chat text to reorder";
 
