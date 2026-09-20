@@ -102,6 +102,7 @@
 - **Section separators:** in Manual mode, add a separator from the monitor header and drag the separator itself wherever you want. Chats inside each resulting block continue to sort by state priority. Dragging highlights the destination section and empty/collapsed sections expose a temporary **Drop here** target.
 - **Quieter counters:** Working, Done, Pending and Attention counts use low-opacity tinted circles with the number itself in the state color.
 - **Safer layout editing:** chat/section layout changes show a short **Undo** action. **Reset layout** removes manual separators, assignments, collapse state and manual ordering while keeping aliases, pins, Pending and other chat preferences.
+- **Version at a glance:** the normal monitor footer shows the current extension version; compact mode stays visually minimal and hides it.
 
 <p align="center">
   <img src="assets/demos/pending.gif" width="430" alt="Real ChatGPT MultiChat Monitor UI showing a slowly pulsing Pending chat">
