@@ -151,6 +151,10 @@
   function detectProjectInfo() {
     const conversationId = conversationIdFromHref(location.href);
     let ref = projectRefFromHref(location.href);
+    if (!ref) {
+      const canonical = document.querySelector('link[rel="canonical"]');
+      if (canonical) ref = projectRefFromHref(canonical.getAttribute("href") || canonical.href);
+    }
     let known = !!ref;
 
     if (!ref && conversationId) {
@@ -895,7 +899,8 @@
 
     row.addEventListener("dragstart", (event) => {
       const descriptor = node.descriptor;
-      if (!descriptor || descriptor.kind !== "manual" || event.target.closest("button,input")) {
+      const targetIsControl = event.target instanceof Element && event.target.closest("button,input");
+      if (!descriptor || descriptor.kind !== "manual" || targetIsControl) {
         event.preventDefault();
         return;
       }
@@ -2053,7 +2058,7 @@
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ["aria-label", "data-testid", "disabled", "role"]
+    attributeFilter: ["aria-label", "data-testid", "disabled", "role", "href", "title"]
   });
 
   window.addEventListener("resize", () => {
