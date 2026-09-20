@@ -47,6 +47,7 @@
   let lastFallbackScanAt = 0;
   let lastErrorScanAt = 0;
   let lastWorkPhaseSeenAt = 0;
+  let activeRunStartedAt = null;
   let activeRunRestoreGraceUntil = 0;
   let bootstrapped = false;
   let manualStopUntil = 0;
@@ -545,14 +546,19 @@
       updatedAt: Date.now()
     };
 
-    if (state !== "working") {
+    if (state === "working") {
+      activeRunStartedAt = localState.startedAt || activeRunStartedAt;
+    } else {
       localState.workPhase = "";
       localState.phaseStartedAt = null;
       lastWorkPhaseSeenAt = 0;
+      if (state !== "draft") activeRunStartedAt = null;
     }
 
-    if (state === "idle" || state === "draft") {
+    if (state === "idle") {
       localState.startedAt = null;
+      localState.finishedAt = null;
+    } else if (state === "draft") {
       localState.finishedAt = null;
     }
 
@@ -611,7 +617,7 @@
       if (localState.state !== "working") {
         clearResetTimer();
         setState("working", {
-          startedAt: now,
+          startedAt: activeRunStartedAt || localState.startedAt || now,
           finishedAt: null,
           workPhase: detectedPhase,
           phaseStartedAt: detectedPhase ? now : null
@@ -726,7 +732,7 @@
       return phase + " " + formatElapsed(now - (chat.startedAt || chat.updatedAt || now));
     }
     if (chat.state === "finished") {
-      return "Done " + formatElapsed(now - (chat.finishedAt || chat.updatedAt || now)) + " ago";
+      return "Done";
     }
     if (chat.state === "interrupted") {
       return "Stopped " + formatElapsed(now - (chat.finishedAt || chat.updatedAt || now)) + " ago";
@@ -780,6 +786,7 @@
         : null,
       updatedAt: Date.now()
     };
+    activeRunStartedAt = localState.startedAt;
     lastWorkPhaseSeenAt = localState.workPhase ? Date.now() : 0;
     activeRunRestoreGraceUntil = Date.now() + 8000;
     return true;
@@ -1562,12 +1569,11 @@
     panel.classList.toggle("auto-fit", canResize && !manualSize);
     if (resizeHandle) resizeHandle.hidden = !canResize || !editAllowed;
     if (autoSizeButton) {
-      autoSizeButton.disabled = !editAllowed || !canResize || !manualSize;
-      autoSizeButton.title = !editAllowed
-        ? "Unlock layout to change monitor size"
-        : manualSize
-          ? "Fit monitor to the visible chats"
-          : "Monitor already follows the visible chats";
+      autoSizeButton.hidden = !editAllowed;
+      autoSizeButton.disabled = !canResize || !manualSize;
+      autoSizeButton.title = manualSize
+        ? "Fit monitor to the visible chats"
+        : "Monitor already follows the visible chats";
     }
 
     if (!canResize || !manualSize) {
@@ -1981,7 +1987,7 @@
       "border:1px solid #303846;border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,.34);opacity:var(--monitor-idle-opacity,1);transition:opacity .16s ease}" +
       "#panel:hover,#panel:focus-within,#panel.hover-active,#panel.dragging,#panel.resizing{opacity:var(--monitor-active-opacity,1)}" +
       "#panel.dragging,#panel.resizing{user-select:none;box-shadow:0 20px 54px rgba(0,0,0,.42)}" +
-      ".head{height:46px;display:flex;align-items:center;gap:8px;padding:0 9px 0 12px;cursor:grab;" +
+      ".head{height:46px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 9px 0 12px;cursor:grab;" +
       "border-bottom:1px solid #29313d}.head:active{cursor:grabbing}" +
       ".brand{font-weight:750;letter-spacing:-.01em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.summary{display:flex;align-items:center;gap:5px;white-space:nowrap}" +
       ".summary[hidden]{display:none}.count-badge{width:22px;height:22px;display:grid;place-items:center;border-radius:50%;font-size:10px;font-weight:850;font-variant-numeric:tabular-nums;line-height:1;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}" +
@@ -1991,7 +1997,7 @@
       ".header-tool{width:26px;height:26px;flex:0 0 auto;border:0;border-radius:7px;background:transparent;color:#7f8b9b;display:grid;place-items:center;cursor:pointer;line-height:1}.header-tool:hover{background:#202731;color:#d9e0e8}.lock-button{font-size:13px}.lock-button.is-locked{color:#d6a25f}.undo-header{font:800 17px/1 system-ui;color:#74d8cc}.undo-header[hidden]{display:none}" +
       ".collapse{width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:#aeb8c7;" +
       "font-size:18px;line-height:1;cursor:pointer}.collapse:hover{background:#202731;color:white}.layout-locked .head{cursor:default}" +
-      ".list{max-height:min(360px,58vh);min-height:0;overflow:auto;padding:7px}.manual-size{max-height:none}.manual-size .list{max-height:none;flex:1}.manual-size.is-empty .list{display:none}.manual-size.is-empty .empty{margin:auto 0}" +
+      ".list{min-height:0;overflow-y:auto;overflow-x:hidden;padding:7px}.manual-size{max-height:none}.manual-size .list{max-height:none;flex:1}.manual-size.is-empty .list{display:none}.manual-size.is-empty .empty{margin:auto 0}" +
       ".chat-row{position:relative;display:flex;align-items:center;gap:3px;border-radius:10px;background:transparent}" +
       ".chat-row:hover,.chat-row.current{background:#1a202a}.chat-row.drag-source,.section-separator.drag-source{opacity:.42}" +
       ".chat-row.drop-before::before,.chat-row.drop-after::after,.section-separator.drop-before::before,.section-separator.drop-after::after{content:'';position:absolute;left:7px;right:7px;height:2px;border-radius:999px;background:#63e6d7}" +
@@ -2021,9 +2027,9 @@
       "color:#d9e0e8;text-align:left;font:12px system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}" +
       ".menu-action:hover{background:#252d38}" +
       ".empty{padding:18px 14px 20px;color:#8e9bad;text-align:center;font-size:12px}" +
-      ".foot{min-height:35px;display:flex;align-items:center;justify-content:center;gap:8px;padding:7px 9px 8px 12px;color:#6f7c8e;text-align:center;font-size:10px;border-top:1px solid #29313d}" +
+      ".foot{min-height:35px;flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:8px;padding:7px 9px 8px 12px;color:#6f7c8e;text-align:center;font-size:10px;border-top:1px solid #29313d}" +
       ".foot-copy{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.version-label{flex:0 0 auto;color:#566274;font:600 9px/1 system-ui;font-variant-numeric:tabular-nums}.auto-size-button{display:inline-flex;align-items:center;flex:0 0 auto;height:22px;padding:0 7px;border:1px solid #354052;border-radius:7px;background:#171d26;color:#aeb8c7;font:600 10px system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}" +
-      ".auto-size-button:hover:not(:disabled){background:#252d38;color:#fff;border-color:#465267}.auto-size-button:disabled{opacity:.38;cursor:default}" +
+      ".auto-size-button[hidden]{display:none}.auto-size-button:hover:not(:disabled){background:#252d38;color:#fff;border-color:#465267}.auto-size-button:disabled{opacity:.38;cursor:default}" +
       "#panel.collapsed{width:215px}.collapsed .list,.collapsed .empty,.collapsed .foot,.collapsed .add-separator{display:none}" +
       ".collapsed .head{border-bottom:0;gap:5px}.collapsed .brand{font-size:0}.collapsed .brand::after{content:'Monitor';font-size:11px}.collapsed .summary{gap:3px}.collapsed .count-badge{width:18px;height:18px;font-size:9px}" +
       "#panel.compact{width:214px}#panel.compact.collapsed{width:214px}" +

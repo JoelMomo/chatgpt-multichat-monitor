@@ -8,7 +8,7 @@
 - Added optional **Dim when inactive** behavior: the monitor uses reduced opacity while the pointer is away and returns to the configured opacity on hover/focus.
 - Compact and collapsed modes temporarily use their fixed dimensions and restore the saved custom size when returning to normal mode.
 - The monitor now auto-fits its height to the visible chats until you manually resize it; a bottom **Auto size** button returns a custom-sized panel to chat-driven sizing.
-- **Auto size** now stays visible in the monitor footer and is disabled only while the panel is already following its automatic chat-driven size.
+- **Auto size** is shown only while the layout is unlocked; locked mode hides the control entirely. Auto-fit now uses the panel's overall height constraint instead of a second list-level cap, preventing spurious scrollbars during state changes such as Working → Done.
 - Smart ordering now keeps Error, Retry, Attention, unread Done and manual Pending chats above routine states unless the user has created a manual order.
 - Added a persistent manual **Pending** state: right-click an Idle LED to mark/unmark the chat. Pending uses a distinct pink LED and remains local to the extension.
 - Enlarged the invisible right-click target around Idle/Pending LEDs without changing the visible LED size, and gave Pending a slow 4.5-second pulse that respects the animation toggle.
@@ -27,8 +27,9 @@
 - Project and manual collapsed state is persisted locally and participates in layout Undo/Reset.
 - Project section headers now use only the project name, ignoring ChatGPT action labels such as **Abrir proyecto… / Open project…**.
 - Added the current extension version to the normal monitor footer while keeping it hidden in Compact mode.
-- Working rows now show visible ChatGPT work phases with a continuous active-response timer. Active start/phase timestamps are persisted per conversation and restored across same-page refreshes and extension service-worker restarts.
+- Working rows now show visible ChatGPT work phases with a continuous active-response timer. Active start/phase timestamps are persisted per conversation and restored across same-page refreshes and extension service-worker restarts; transient Draft transitions preserve the active run instead of restarting its timer.
 - Added a persistent open/closed **layout lock** in the monitor header. Locked mode blocks accidental drag/reorder, section editing/collapse, separator creation, panel movement and resizing while leaving normal chat actions available.
+- Done rows now show simply **Done** instead of a continuously updating “Done … ago” age.
 
 ## 0.3.0 - 2026-09-19
 

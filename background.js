@@ -754,15 +754,18 @@ function upsertState(payload, tab) {
       activeRunsChanged = true;
     }
   } else {
-    if (clearActiveRun(chatKey)) activeRunsChanged = true;
+    if (state !== "draft" && clearActiveRun(chatKey)) activeRunsChanged = true;
     workPhase = "";
     phaseStartedAt = null;
 
     if (["finished", "interrupted", "retry", "attention", "error"].includes(state) && !finishedAt) {
       finishedAt = now;
     }
-    if (state === "idle" || state === "draft") {
+    if (state === "idle") {
       startedAt = null;
+      finishedAt = null;
+    } else if (state === "draft") {
+      startedAt = persistedRun?.startedAt ?? null;
       finishedAt = null;
     }
   }
