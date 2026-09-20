@@ -20,6 +20,8 @@
     monitorAnimations: true,
     monitorOpacity: 1,
     monitorTheme: "dark",
+    monitorGroupMode: "project",
+    monitorSectionUi: {},
     monitorPosition: null,
     monitorSize: null
   };
@@ -42,6 +44,13 @@
   let manualStopUntil = 0;
   let lastUrl = location.href;
   let lastTitle = document.title;
+  let projectInfo = {
+    conversationId: "",
+    known: false,
+    key: "",
+    name: ""
+  };
+  let projectRefreshTimer = null;
   let host = null;
   let panel = null;
   let header = null;
@@ -56,6 +65,7 @@
   let dragging = null;
   let resizing = null;
   let openMenuTabId = null;
+  let openMenuSectionId = null;
   let floatingMenu = null;
   let undoToast = null;
   let undoToastLabel = null;
@@ -72,6 +82,129 @@
   function isVisible(element) {
     return !!element &&
       !!(element.offsetWidth || element.offsetHeight || element.getClientRects().length);
+  }
+
+  function conversationIdFromHref(href) {
+    try {
+      const parsed = new URL(href || "", location.origin);
+      const match = parsed.pathname.match(/\/c\/([^/?#]+)/);
+      return match ? match[1] : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function projectRefFromHref(href) {
+    try {
+      const parsed = new URL(href || "", location.origin);
+      const match = parsed.pathname.match(/^\/g\/(g-p-[^/]+)(?:\/|$)/i);
+      if (!match) return null;
+      const segment = match[1];
+      const stable = segment.match(/^(g-p-[0-9a-f]{16,})/i);
+      const key = stable ? stable[1] : segment;
+      const slug = segment.slice(key.length).replace(/^-+/, "");
+      return { key, segment, slug };
+    } catch {
+      return null;
+    }
+  }
+
+  function humanizeProjectSlug(slug) {
+    if (!slug) return "";
+    let value = slug;
+    try {
+      value = decodeURIComponent(value);
+    } catch {}
+    value = value.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+    if (!value) return "";
+    return value.replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
+  }
+
+  function cleanProjectLabel(value) {
+    return String(value || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80);
+  }
+
+  function projectNameFromDom(projectKey) {
+    if (!projectKey) return "";
+    for (const link of document.querySelectorAll('a[href*="/g/g-p-"]')) {
+      const ref = projectRefFromHref(link.getAttribute("href") || link.href);
+      if (!ref || ref.key !== projectKey) continue;
+      let path = "";
+      try {
+        path = new URL(link.getAttribute("href") || link.href, location.origin).pathname;
+      } catch {}
+      if (!/\/project\/?$/i.test(path)) continue;
+      const label = cleanProjectLabel(
+        link.getAttribute("aria-label") ||
+        link.getAttribute("title") ||
+        link.textContent
+      );
+      if (label) return label;
+    }
+    return "";
+  }
+
+  function detectProjectInfo() {
+    const conversationId = conversationIdFromHref(location.href);
+    let ref = projectRefFromHref(location.href);
+    let known = !!ref;
+
+    if (!ref && conversationId) {
+      let foundPlainConversationLink = false;
+      for (const link of document.querySelectorAll('a[href*="/c/"]')) {
+        const href = link.getAttribute("href") || link.href || "";
+        if (conversationIdFromHref(href) !== conversationId) continue;
+        const linkedProject = projectRefFromHref(href);
+        if (linkedProject) {
+          ref = linkedProject;
+          known = true;
+          break;
+        }
+        foundPlainConversationLink = true;
+      }
+      if (!ref && foundPlainConversationLink) known = true;
+    }
+
+    if (!ref) {
+      return {
+        conversationId,
+        known,
+        key: "",
+        name: ""
+      };
+    }
+
+    return {
+      conversationId,
+      known: true,
+      key: ref.key,
+      name: projectNameFromDom(ref.key) || humanizeProjectSlug(ref.slug)
+    };
+  }
+
+  function refreshProjectInfo(notify = false) {
+    const detected = detectProjectInfo();
+    const sameConversation = detected.conversationId &&
+      detected.conversationId === projectInfo.conversationId;
+    const next = !detected.known && sameConversation && projectInfo.known
+      ? projectInfo
+      : detected;
+    const before = [projectInfo.conversationId, projectInfo.known, projectInfo.key, projectInfo.name].join("|");
+    const after = [next.conversationId, next.known, next.key, next.name].join("|");
+    projectInfo = next;
+    if (notify && before !== after) sendCurrentState();
+    return projectInfo;
+  }
+
+  function scheduleProjectRefresh() {
+    if (projectRefreshTimer) return;
+    projectRefreshTimer = setTimeout(() => {
+      projectRefreshTimer = null;
+      refreshProjectInfo(true);
+    }, MUTATION_THROTTLE_MS);
   }
 
   function isStopButton(button) {
@@ -251,6 +384,7 @@
   }
 
   function statePayload() {
+    const project = refreshProjectInfo(false);
     return {
       type: "monitor-state",
       title: document.title,
@@ -258,7 +392,10 @@
       state: localState.state,
       startedAt: localState.startedAt,
       finishedAt: localState.finishedAt,
-      updatedAt: localState.updatedAt
+      updatedAt: localState.updatedAt,
+      projectKnown: project.known === true,
+      projectKey: project.key || "",
+      projectName: project.name || ""
     };
   }
 
@@ -304,6 +441,13 @@
 
     if (urlChanged) {
       lastUrl = location.href;
+      projectInfo = {
+        conversationId: conversationIdFromHref(location.href),
+        known: false,
+        key: "",
+        name: ""
+      };
+      scheduleProjectRefresh();
       clearFinishTimer();
       clearResetTimer();
       manualStopUntil = 0;
@@ -1498,13 +1642,17 @@
     }
 
     if (message?.type === "monitor-get-local-state") {
+      const project = refreshProjectInfo(false);
       sendResponse({
         title: document.title,
         url: location.href,
         state: localState.state,
         startedAt: localState.startedAt,
         finishedAt: localState.finishedAt,
-        updatedAt: localState.updatedAt
+        updatedAt: localState.updatedAt,
+        projectKnown: project.known === true,
+        projectKey: project.key || "",
+        projectName: project.name || ""
       });
       return true;
     }
@@ -1551,6 +1699,7 @@
 
   const observer = new MutationObserver(() => {
     scheduleEvaluate();
+    scheduleProjectRefresh();
   });
 
   document.addEventListener("input", (event) => {
@@ -1613,6 +1762,7 @@
   (async () => {
     await loadSettings();
     buildOverlay();
+    refreshProjectInfo(false);
     evaluate({ allowFallback: true });
     sendCurrentState();
     await requestSnapshot();
