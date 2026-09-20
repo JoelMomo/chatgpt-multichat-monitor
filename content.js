@@ -22,6 +22,7 @@
     monitorTheme: "dark",
     monitorGroupMode: "project",
     monitorSectionUi: {},
+    monitorLayoutLocked: false,
     monitorPosition: null,
     monitorSize: null
   };
@@ -59,6 +60,8 @@
   let summary = null;
   let countBadges = null;
   let addSeparatorButton = null;
+  let lockButton = null;
+  let undoButton = null;
   let collapseButton = null;
   let resizeHandle = null;
   let autoSizeButton = null;
@@ -68,11 +71,10 @@
   let openMenuTabId = null;
   let openMenuSectionId = null;
   let floatingMenu = null;
-  let undoToast = null;
-  let undoToastLabel = null;
   let undoTimer = null;
+  let currentUndoId = "";
   let draggedChatKey = null;
-  let draggedSeparatorId = null;
+  let draggedSectionToken = null;
   let dropTarget = null;
 
   const rowNodes = new Map();
@@ -635,6 +637,10 @@
       : "project";
   }
 
+  function layoutLocked() {
+    return settings.monitorLayoutLocked === true;
+  }
+
   function sectionUiState(sectionKey) {
     const all = settings.monitorSectionUi;
     if (!all || typeof all !== "object") return {};
@@ -649,6 +655,7 @@
 
   function layoutTokenForElement(element) {
     if (!(element instanceof Element)) return "";
+    if (element.dataset.projectId) return "p:" + element.dataset.projectId;
     if (element.dataset.separatorId) return "s:" + element.dataset.separatorId;
     if (element.dataset.chatKey) return "c:" + element.dataset.chatKey;
     return "";
@@ -661,8 +668,29 @@
   }
 
   function persistLayoutMove(draggedToken, targetToken, before) {
+    if (layoutLocked()) return Promise.resolve(null);
     const mode = activeGroupMode();
-    if (mode === "project") return Promise.resolve(null);
+
+    if (mode === "project") {
+      if (!draggedToken.startsWith("p:") || !targetToken.startsWith("p:")) {
+        return Promise.resolve(null);
+      }
+      const tokens = currentLayoutTokens()
+        .filter((token) => token.startsWith("p:") && token !== draggedToken);
+      let targetIndex = tokens.indexOf(targetToken);
+      if (targetIndex < 0) return Promise.resolve(null);
+      if (!before) targetIndex += 1;
+      tokens.splice(targetIndex, 0, draggedToken);
+
+      return sendMessage({
+        type: "monitor-set-project-order",
+        projectKeys: tokens.map((token) => token.slice(2))
+      }).then((response) => {
+        if (response?.ok && response.undoId) showLayoutUndo("Project moved", response.undoId);
+        return response;
+      });
+    }
+
     const tokens = currentLayoutTokens().filter((token) => token !== draggedToken);
     let targetIndex = tokens.indexOf(targetToken);
     if (targetIndex < 0) return Promise.resolve(null);
@@ -711,7 +739,7 @@
   }
 
   function moveChat(chat, direction) {
-    if (activeGroupMode() === "project") return Promise.resolve(null);
+    if (layoutLocked() || activeGroupMode() === "project") return Promise.resolve(null);
     const group = visibleGroupFor(chat);
     const index = group.findIndex((item) => item.chatKey === chat.chatKey);
     const nextIndex = index + direction;
@@ -728,20 +756,26 @@
       clearTimeout(undoTimer);
       undoTimer = null;
     }
-    if (undoToast) undoToast.hidden = true;
+    currentUndoId = "";
+    if (undoButton) {
+      undoButton.hidden = true;
+      undoButton.removeAttribute("data-undo-id");
+    }
   }
 
   function showLayoutUndo(label, undoId) {
-    if (!undoToast || !undoToastLabel || !undoId) return;
+    if (!undoButton || !undoId) return;
     hideLayoutUndo();
-    undoToastLabel.textContent = label;
-    undoToast.dataset.undoId = undoId;
-    undoToast.hidden = false;
+    currentUndoId = undoId;
+    undoButton.dataset.undoId = undoId;
+    undoButton.hidden = false;
+    undoButton.title = "Undo: " + label;
+    undoButton.setAttribute("aria-label", "Undo " + label.toLowerCase());
     undoTimer = setTimeout(hideLayoutUndo, 6500);
   }
 
   function setSectionCollapsed(descriptor, collapsed) {
-    if (!descriptor?.uiId) return Promise.resolve(null);
+    if (layoutLocked() || !descriptor?.uiId) return Promise.resolve(null);
     return sendMessage({
       type: "monitor-set-section-collapsed",
       sectionKey: descriptor.uiId,
@@ -755,7 +789,7 @@
   }
 
   function renameManualSection(descriptor, name) {
-    if (descriptor?.kind !== "manual" || !descriptor.id) return Promise.resolve(null);
+    if (layoutLocked() || descriptor?.kind !== "manual" || !descriptor.id) return Promise.resolve(null);
     return sendMessage({
       type: "monitor-set-separator-meta",
       id: descriptor.id,
@@ -767,7 +801,7 @@
   }
 
   function moveManualSection(descriptor, direction) {
-    if (descriptor?.kind !== "manual" || !descriptor.id) return Promise.resolve(null);
+    if (layoutLocked() || descriptor?.kind !== "manual" || !descriptor.id) return Promise.resolve(null);
     return sendMessage({
       type: "monitor-move-separator",
       id: descriptor.id,
@@ -815,7 +849,7 @@
 
   function finishLayoutDrag() {
     draggedChatKey = null;
-    draggedSeparatorId = null;
+    draggedSectionToken = null;
     if (list) list.classList.remove("layout-dragging", "chat-dragging");
     for (const node of rowNodes.values()) node.row.classList.remove("drag-source");
     for (const node of separatorNodes.values()) node.row.classList.remove("drag-source");
@@ -845,7 +879,7 @@
 
   function beginSectionRename(node) {
     const descriptor = node?.descriptor;
-    if (!descriptor || descriptor.kind !== "manual") return;
+    if (layoutLocked() || !descriptor || descriptor.kind !== "manual") return;
     clearTimeout(node.captionClickTimer);
     node.caption.hidden = true;
     node.input.hidden = false;
