@@ -1376,7 +1376,7 @@
 
     const activeOpacity = normalizedOpacity();
     const idleOpacity = settings.monitorHoverFocus === true
-      ? Math.max(0.25, activeOpacity * 0.68)
+      ? Math.max(0.25, activeOpacity * 0.58)
       : activeOpacity;
 
     panel.style.setProperty("--monitor-active-opacity", String(activeOpacity));
