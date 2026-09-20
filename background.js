@@ -2,6 +2,7 @@ const chats = new Map();
 
 const PREFS_KEY = "monitorChatPrefs";
 const ORDER_KEY = "monitorChatOrder";
+const PROJECT_ORDER_KEY = "monitorProjectOrder";
 const SECTIONS_KEY = "monitorSections";
 const SECTION_META_KEY = "monitorSectionMeta";
 const SECTION_UI_KEY = "monitorSectionUi";
@@ -48,6 +49,7 @@ const SOUND_KEY_BY_STATE = {
 
 let chatPrefs = {};
 let chatOrder = [];
+let projectOrder = [];
 let sections = [];
 let sectionMeta = {};
 let sectionUi = {};
@@ -89,6 +91,7 @@ async function ensureInitialized() {
     const stored = await chrome.storage.local.get({
       [PREFS_KEY]: {},
       [ORDER_KEY]: [],
+      [PROJECT_ORDER_KEY]: [],
       [SECTIONS_KEY]: [],
       [SECTION_META_KEY]: {},
       [SECTION_UI_KEY]: {},
@@ -102,6 +105,9 @@ async function ensureInitialized() {
       : {};
     chatOrder = Array.isArray(stored[ORDER_KEY])
       ? [...new Set(stored[ORDER_KEY].filter((key) => typeof key === "string" && key))].slice(0, 200)
+      : [];
+    projectOrder = Array.isArray(stored[PROJECT_ORDER_KEY])
+      ? [...new Set(stored[PROJECT_ORDER_KEY].filter((key) => typeof key === "string" && key.startsWith("project:")))].slice(0, 100)
       : [];
     sections = Array.isArray(stored[SECTIONS_KEY])
       ? [...new Set(stored[SECTIONS_KEY].filter((id) => typeof id === "string" && id))].slice(0, 40)
@@ -368,6 +374,7 @@ function projectGroupLabel(chat) {
 
 function snapshot() {
   const manualIndex = new Map(chatOrder.map((key, index) => [key, index]));
+  const projectIndex = new Map(projectOrder.map((key, index) => [key, index]));
   const sectionIndex = new Map([["", 0], ...sections.map((id, index) => [id, index + 1])]);
   const segmented = groupMode === "manual" && sections.length > 0;
   const projectGrouped = groupMode === "project";
@@ -376,15 +383,26 @@ function snapshot() {
     .map(decorate)
     .sort((a, b) => {
       if (projectGrouped) {
+        const aKey = projectGroupKey(a);
+        const bKey = projectGroupKey(b);
+        const aProjectOrder = projectIndex.has(aKey) ? projectIndex.get(aKey) : null;
+        const bProjectOrder = projectIndex.has(bKey) ? projectIndex.get(bKey) : null;
+
+        if (aProjectOrder !== null && bProjectOrder !== null && aProjectOrder !== bProjectOrder) {
+          return aProjectOrder - bProjectOrder;
+        }
+        if (aProjectOrder !== null && bProjectOrder === null) return -1;
+        if (aProjectOrder === null && bProjectOrder !== null) return 1;
+
         const aNone = a.projectKey ? 0 : 1;
         const bNone = b.projectKey ? 0 : 1;
         if (aNone !== bNone) return aNone - bNone;
-        const projectOrder = projectGroupLabel(a).localeCompare(projectGroupLabel(b), undefined, {
+        const projectLabelOrder = projectGroupLabel(a).localeCompare(projectGroupLabel(b), undefined, {
           sensitivity: "base",
           numeric: true
         });
-        if (projectOrder) return projectOrder;
-        const keyOrder = projectGroupKey(a).localeCompare(projectGroupKey(b));
+        if (projectLabelOrder) return projectLabelOrder;
+        const keyOrder = aKey.localeCompare(bKey);
         if (keyOrder) return keyOrder;
       } else if (segmented) {
         const sectionOrder = (sectionIndex.get(a.section) ?? 0) - (sectionIndex.get(b.section) ?? 0);
@@ -818,6 +836,18 @@ async function resetChatOrder() {
   return true;
 }
 
+async function setProjectOrder(keys) {
+  await ensureInitialized();
+  const before = captureLayoutState();
+  projectOrder = [...new Set(
+    (Array.isArray(keys) ? keys : [])
+      .filter((key) => typeof key === "string" && key.startsWith("project:"))
+  )].slice(0, 100);
+
+  await chrome.storage.local.set({ [PROJECT_ORDER_KEY]: projectOrder });
+  return { ok: true, undoId: registerLayoutUndo(before) };
+}
+
 function captureLayoutState() {
   const sectionsByChat = {};
   for (const [key, prefs] of Object.entries(chatPrefs)) {
@@ -828,6 +858,7 @@ function captureLayoutState() {
   return {
     sections: [...sections],
     chatOrder: [...chatOrder],
+    projectOrder: [...projectOrder],
     sectionsByChat,
     sectionMeta: JSON.parse(JSON.stringify(sectionMeta)),
     sectionUi: JSON.parse(JSON.stringify(sectionUi))
@@ -856,6 +887,9 @@ async function restoreLayoutUndo(id) {
   chatOrder = Array.isArray(entry.state.chatOrder)
     ? [...new Set(entry.state.chatOrder.filter((value) => typeof value === "string" && value))].slice(0, 200)
     : [];
+  projectOrder = Array.isArray(entry.state.projectOrder)
+    ? [...new Set(entry.state.projectOrder.filter((value) => typeof value === "string" && value.startsWith("project:")))].slice(0, 100)
+    : [];
   sectionMeta = entry.state.sectionMeta && typeof entry.state.sectionMeta === "object"
     ? entry.state.sectionMeta
     : {};
@@ -881,6 +915,7 @@ async function restoreLayoutUndo(id) {
   await chrome.storage.local.set({
     [SECTIONS_KEY]: sections,
     [ORDER_KEY]: chatOrder,
+    [PROJECT_ORDER_KEY]: projectOrder,
     [PREFS_KEY]: chatPrefs,
     [SECTION_META_KEY]: sectionMeta,
     [SECTION_UI_KEY]: sectionUi
@@ -893,6 +928,7 @@ async function resetLayout() {
   const before = captureLayoutState();
   sections = [];
   chatOrder = [];
+  projectOrder = [];
   sectionMeta = {};
   sectionUi = {};
 
@@ -906,6 +942,7 @@ async function resetLayout() {
   await chrome.storage.local.set({
     [SECTIONS_KEY]: [],
     [ORDER_KEY]: [],
+    [PROJECT_ORDER_KEY]: [],
     [PREFS_KEY]: chatPrefs,
     [SECTION_META_KEY]: {},
     [SECTION_UI_KEY]: {}
@@ -1181,6 +1218,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === "monitor-set-layout") {
     setLayout(message.tokens)
+      .then((result) => broadcast().then(() => sendResponse(result)))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-set-project-order") {
+    setProjectOrder(message.projectKeys)
       .then((result) => broadcast().then(() => sendResponse(result)))
       .catch(() => sendResponse({ ok: false }));
     return true;
