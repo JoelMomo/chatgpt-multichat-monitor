@@ -22,6 +22,7 @@
 - Added optional manual section names with an understated line–label–line design, inline rename, collapse/expand and collapsed chat counts.
 - Added section menus for rename/clear name, collapse/expand, move up/down and delete. Automatic project sections expose collapse/expand without pretending to rename or move the underlying ChatGPT project.
 - Project and manual collapsed state is persisted locally and participates in layout Undo/Reset.
+- Added the current extension version to the normal monitor footer while keeping it hidden in Compact mode.
 
 ## 0.3.0 - 2026-09-19
 
