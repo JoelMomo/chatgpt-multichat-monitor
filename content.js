@@ -11,6 +11,7 @@
   const MUTATION_THROTTLE_MS = 500;
   const ERROR_SCAN_MS = 1000;
   const LATE_ISSUE_GRACE_MS = 10000;
+  const WORK_PHASE_GRACE_MS = 1600;
 
   const DEFAULTS = {
     monitorEnabled: true,
@@ -32,6 +33,8 @@
     state: "idle",
     startedAt: null,
     finishedAt: null,
+    workPhase: "",
+    phaseStartedAt: null,
     updatedAt: Date.now()
   };
 
@@ -43,6 +46,9 @@
   let evaluationTimer = null;
   let lastFallbackScanAt = 0;
   let lastErrorScanAt = 0;
+  let lastWorkPhaseSeenAt = 0;
+  let activeRunRestoreGraceUntil = 0;
+  let bootstrapped = false;
   let manualStopUntil = 0;
   let lastUrl = location.href;
   let lastTitle = document.title;
@@ -262,6 +268,88 @@
     return allowFallback ? fallbackWorkingSignal() : false;
   }
 
+  function normalizeWorkPhaseText(value) {
+    return String(value || "")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/[⌄⌃▼▲▾▴]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 96);
+  }
+
+  function classifyWorkPhaseText(value) {
+    const text = normalizeWorkPhaseText(value);
+    if (!text) return "";
+
+    if (/\b(analizando|pensando|razonando|analyzing|analysing|thinking|reasoning|réfléchissant|raisonnant|analysiert|denkt\s+nach|analizzando|ragionando|raciocinando)\b/i.test(text)) {
+      if (/\b(analizando|pensando|razonando)\b/i.test(text)) return "Analizando";
+      if (/\b(réfléchissant|raisonnant)\b/i.test(text)) return "Analyse";
+      if (/\b(analysiert|denkt\s+nach)\b/i.test(text)) return "Analyse";
+      if (/\b(analizzando|ragionando)\b/i.test(text)) return "Analisi";
+      if (/\b(raciocinando)\b/i.test(text)) return "Analisando";
+      return "Analyzing";
+    }
+
+    if (/\b(buscando|navegando|searching|browsing|recherchant|recherche\s+en\s+cours|sucht|cercando|pesquisando)\b/i.test(text)) {
+      if (/\b(buscando|navegando)\b/i.test(text)) return "Buscando";
+      if (/\b(recherchant|recherche\s+en\s+cours)\b/i.test(text)) return "Recherche";
+      if (/\b(sucht)\b/i.test(text)) return "Suche";
+      if (/\b(cercando)\b/i.test(text)) return "Ricerca";
+      if (/\b(pesquisando)\b/i.test(text)) return "Pesquisando";
+      return "Searching";
+    }
+
+    if (/\b(ejecutando|usando\s+herramientas?|consultando|leyendo|abriendo|escribiendo|editando|creando|descargando|subiendo|executing|running|using\s+tools?|reading|opening|fetching|writing|editing|creating|downloading|uploading|exécutant|utilisant|ausführend|eseguendo|usando\s+strumenti?|executando|usando\s+ferramentas?)\b/i.test(text)) {
+      if (/\b(ejecutando|usando\s+herramientas?|consultando|leyendo|abriendo|escribiendo|editando|creando|descargando|subiendo)\b/i.test(text)) return "Ejecutando";
+      if (/\b(exécutant|utilisant)\b/i.test(text)) return "Exécution";
+      if (/\b(ausführend)\b/i.test(text)) return "Ausführung";
+      if (/\b(eseguendo|usando\s+strumenti?)\b/i.test(text)) return "Esecuzione";
+      if (/\b(executando|usando\s+ferramentas?)\b/i.test(text)) return "Executando";
+      return "Executing";
+    }
+
+    return "";
+  }
+
+  function detectWorkPhase() {
+    const assistantTurns = document.querySelectorAll('[data-message-author-role="assistant"]');
+    const latestTurn = assistantTurns.length ? assistantTurns[assistantTurns.length - 1] : null;
+    const roots = latestTurn
+      ? [latestTurn]
+      : [document.querySelector("main") || document.body];
+
+    const selector = [
+      "button",
+      '[role="button"]',
+      '[data-testid*="think"]',
+      '[data-testid*="reason"]',
+      '[data-testid*="search"]',
+      '[data-testid*="tool"]',
+      '[aria-live="polite"]',
+      '[aria-live="assertive"]'
+    ].join(",");
+
+    for (const root of roots) {
+      if (!root) continue;
+      const candidates = [...root.querySelectorAll(selector)];
+      for (let index = candidates.length - 1; index >= 0; index -= 1) {
+        const element = candidates[index];
+        if (!isVisible(element)) continue;
+
+        for (const raw of [
+          element.getAttribute?.("aria-label"),
+          element.getAttribute?.("title"),
+          element.textContent
+        ]) {
+          const phase = classifyWorkPhaseText(raw);
+          if (phase) return phase;
+        }
+      }
+    }
+
+    return "";
+  }
+
   function promptHasDraft() {
     const selectors = [
       "#prompt-textarea",
@@ -292,9 +380,12 @@
   }
 
   function setRestingState() {
+    lastWorkPhaseSeenAt = 0;
     setState(promptHasDraft() ? "draft" : "idle", {
       startedAt: null,
-      finishedAt: null
+      finishedAt: null,
+      workPhase: "",
+      phaseStartedAt: null
     });
   }
 
@@ -414,6 +505,8 @@
       state: localState.state,
       startedAt: localState.startedAt,
       finishedAt: localState.finishedAt,
+      workPhase: localState.workPhase,
+      phaseStartedAt: localState.phaseStartedAt,
       updatedAt: localState.updatedAt,
       projectKnown: project.known === true,
       projectKey: project.key || "",
@@ -429,9 +522,9 @@
 
   function setState(state, values) {
     const extra = values || {};
+    const trackedKeys = ["startedAt", "finishedAt", "workPhase", "phaseStartedAt"];
     if (localState.state === state &&
-        !Object.prototype.hasOwnProperty.call(extra, "startedAt") &&
-        !Object.prototype.hasOwnProperty.call(extra, "finishedAt")) {
+        !trackedKeys.some((key) => Object.prototype.hasOwnProperty.call(extra, key))) {
       return;
     }
 
@@ -443,8 +536,20 @@
       finishedAt: Object.prototype.hasOwnProperty.call(extra, "finishedAt")
         ? extra.finishedAt
         : localState.finishedAt,
+      workPhase: Object.prototype.hasOwnProperty.call(extra, "workPhase")
+        ? String(extra.workPhase || "")
+        : localState.workPhase,
+      phaseStartedAt: Object.prototype.hasOwnProperty.call(extra, "phaseStartedAt")
+        ? extra.phaseStartedAt
+        : localState.phaseStartedAt,
       updatedAt: Date.now()
     };
+
+    if (state !== "working") {
+      localState.workPhase = "";
+      localState.phaseStartedAt = null;
+      lastWorkPhaseSeenAt = 0;
+    }
 
     if (state === "idle" || state === "draft") {
       localState.startedAt = null;
@@ -475,6 +580,7 @@
       manualStopUntil = 0;
       lastErrorScanAt = 0;
       lastFallbackScanAt = 0;
+      lastWorkPhaseSeenAt = 0;
       setState("idle");
     }
 
@@ -485,14 +591,43 @@
 
     const working = detectWorking(allowFallback);
 
+    if (!working &&
+        localState.state === "working" &&
+        activeRunRestoreGraceUntil > Date.now()) {
+      return;
+    }
+
     // Active generation wins over stale retry/error UI left behind by ChatGPT.
     if (working) {
       clearFinishTimer();
+      activeRunRestoreGraceUntil = 0;
+      const now = Date.now();
+      const detectedPhase = detectWorkPhase();
+
+      if (detectedPhase) {
+        lastWorkPhaseSeenAt = now;
+      }
+
       if (localState.state !== "working") {
         clearResetTimer();
         setState("working", {
-          startedAt: Date.now(),
-          finishedAt: null
+          startedAt: now,
+          finishedAt: null,
+          workPhase: detectedPhase,
+          phaseStartedAt: detectedPhase ? now : null
+        });
+      } else if (detectedPhase && detectedPhase !== localState.workPhase) {
+        setState("working", {
+          workPhase: detectedPhase,
+          phaseStartedAt: now
+        });
+      } else if (!detectedPhase &&
+                 localState.workPhase &&
+                 lastWorkPhaseSeenAt &&
+                 now - lastWorkPhaseSeenAt > WORK_PHASE_GRACE_MS) {
+        setState("working", {
+          workPhase: "",
+          phaseStartedAt: null
         });
       }
       return;
@@ -587,7 +722,8 @@
 
   function statusText(chat, now) {
     if (chat.state === "working") {
-      return "Working " + formatElapsed(now - (chat.startedAt || chat.updatedAt || now));
+      const phase = String(chat.workPhase || "").trim() || "Working";
+      return phase + " " + formatElapsed(now - (chat.startedAt || chat.updatedAt || now));
     }
     if (chat.state === "finished") {
       return "Done " + formatElapsed(now - (chat.finishedAt || chat.updatedAt || now)) + " ago";
@@ -596,6 +732,15 @@
       return "Stopped " + formatElapsed(now - (chat.finishedAt || chat.updatedAt || now)) + " ago";
     }
     return stateName(chat.state);
+  }
+
+  function statusTitle(chat, now) {
+    if (chat.state !== "working") return stateName(chat.state);
+    const total = formatElapsed(now - (chat.startedAt || chat.updatedAt || now));
+    const phase = String(chat.workPhase || "").trim();
+    if (!phase || !chat.phaseStartedAt) return "Active work: " + total;
+    const phaseElapsed = formatElapsed(now - chat.phaseStartedAt);
+    return "Active work: " + total + " · " + phase + ": " + phaseElapsed;
   }
 
   function isRecent(chat, now) {
@@ -615,6 +760,29 @@
     } catch {
       return Promise.resolve(null);
     }
+  }
+
+  async function hydrateActiveRun() {
+    const response = await sendMessage({
+      type: "monitor-get-active-run",
+      url: location.href
+    });
+    const run = response?.run;
+    if (!run || !Number.isFinite(Number(run.startedAt))) return false;
+
+    localState = {
+      state: "working",
+      startedAt: Number(run.startedAt),
+      finishedAt: null,
+      workPhase: String(run.workPhase || ""),
+      phaseStartedAt: Number.isFinite(Number(run.phaseStartedAt))
+        ? Number(run.phaseStartedAt)
+        : null,
+      updatedAt: Date.now()
+    };
+    lastWorkPhaseSeenAt = localState.workPhase ? Date.now() : 0;
+    activeRunRestoreGraceUntil = Date.now() + 8000;
+    return true;
   }
 
   function activateChat(tabId) {
@@ -1577,6 +1745,7 @@
       const visibleTitle = projectScopedDisplayTitle(chat, mode);
       node.title.textContent = (chat.pinned ? "📌 " : "") + visibleTitle;
       node.meta.textContent = statusText(chat, now);
+      node.meta.title = statusTitle(chat, now);
       node.dot.title = chat.state === "idle"
         ? "Idle — right-click to mark Pending"
         : chat.state === "pending"
@@ -1659,6 +1828,7 @@
       if (!node.chat) continue;
       const next = statusText(node.chat, now);
       if (node.meta.textContent !== next) node.meta.textContent = next;
+      node.meta.title = statusTitle(node.chat, now);
     }
   }
 
@@ -2198,6 +2368,10 @@
     }
 
     if (message?.type === "monitor-get-local-state") {
+      if (!bootstrapped) {
+        sendResponse({ initializing: true });
+        return true;
+      }
       const project = refreshProjectInfo(false);
       sendResponse({
         title: document.title,
@@ -2205,6 +2379,8 @@
         state: localState.state,
         startedAt: localState.startedAt,
         finishedAt: localState.finishedAt,
+        workPhase: localState.workPhase,
+        phaseStartedAt: localState.phaseStartedAt,
         updatedAt: localState.updatedAt,
         projectKnown: project.known === true,
         projectKey: project.key || "",
@@ -2329,9 +2505,11 @@
 
   (async () => {
     await loadSettings();
+    await hydrateActiveRun();
     buildOverlay();
     refreshProjectInfo(false);
     evaluate({ allowFallback: true });
+    bootstrapped = true;
     sendCurrentState();
     await requestSnapshot();
   })();
