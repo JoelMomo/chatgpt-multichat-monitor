@@ -545,6 +545,7 @@
     if (state !== "working") {
       localState.workPhase = "";
       localState.phaseStartedAt = null;
+      lastWorkPhaseSeenAt = 0;
     }
 
     if (state === "idle" || state === "draft") {
@@ -576,6 +577,7 @@
       manualStopUntil = 0;
       lastErrorScanAt = 0;
       lastFallbackScanAt = 0;
+      lastWorkPhaseSeenAt = 0;
       setState("idle");
     }
 
@@ -589,11 +591,33 @@
     // Active generation wins over stale retry/error UI left behind by ChatGPT.
     if (working) {
       clearFinishTimer();
+      const now = Date.now();
+      const detectedPhase = detectWorkPhase();
+
+      if (detectedPhase) {
+        lastWorkPhaseSeenAt = now;
+      }
+
       if (localState.state !== "working") {
         clearResetTimer();
         setState("working", {
-          startedAt: Date.now(),
-          finishedAt: null
+          startedAt: now,
+          finishedAt: null,
+          workPhase: detectedPhase,
+          phaseStartedAt: detectedPhase ? now : null
+        });
+      } else if (detectedPhase && detectedPhase !== localState.workPhase) {
+        setState("working", {
+          workPhase: detectedPhase,
+          phaseStartedAt: now
+        });
+      } else if (!detectedPhase &&
+                 localState.workPhase &&
+                 lastWorkPhaseSeenAt &&
+                 now - lastWorkPhaseSeenAt > WORK_PHASE_GRACE_MS) {
+        setState("working", {
+          workPhase: "",
+          phaseStartedAt: null
         });
       }
       return;
@@ -688,7 +712,8 @@
 
   function statusText(chat, now) {
     if (chat.state === "working") {
-      return "Working " + formatElapsed(now - (chat.startedAt || chat.updatedAt || now));
+      const phase = String(chat.workPhase || "").trim() || "Working";
+      return phase + " " + formatElapsed(now - (chat.startedAt || chat.updatedAt || now));
     }
     if (chat.state === "finished") {
       return "Done " + formatElapsed(now - (chat.finishedAt || chat.updatedAt || now)) + " ago";
@@ -697,6 +722,15 @@
       return "Stopped " + formatElapsed(now - (chat.finishedAt || chat.updatedAt || now)) + " ago";
     }
     return stateName(chat.state);
+  }
+
+  function statusTitle(chat, now) {
+    if (chat.state !== "working") return stateName(chat.state);
+    const total = formatElapsed(now - (chat.startedAt || chat.updatedAt || now));
+    const phase = String(chat.workPhase || "").trim();
+    if (!phase || !chat.phaseStartedAt) return "Active work: " + total;
+    const phaseElapsed = formatElapsed(now - chat.phaseStartedAt);
+    return "Active work: " + total + " · " + phase + ": " + phaseElapsed;
   }
 
   function isRecent(chat, now) {
@@ -1658,6 +1692,7 @@
 
       node.title.textContent = (chat.pinned ? "📌 " : "") + (chat.displayTitle || chat.title || "ChatGPT");
       node.meta.textContent = statusText(chat, now);
+      node.meta.title = statusTitle(chat, now);
       node.dot.title = chat.state === "idle"
         ? "Idle — right-click to mark Pending"
         : chat.state === "pending"
@@ -1740,6 +1775,7 @@
       if (!node.chat) continue;
       const next = statusText(node.chat, now);
       if (node.meta.textContent !== next) node.meta.textContent = next;
+      node.meta.title = statusTitle(node.chat, now);
     }
   }
 
@@ -2268,6 +2304,8 @@
         state: localState.state,
         startedAt: localState.startedAt,
         finishedAt: localState.finishedAt,
+        workPhase: localState.workPhase,
+        phaseStartedAt: localState.phaseStartedAt,
         updatedAt: localState.updatedAt,
         projectKnown: project.known === true,
         projectKey: project.key || "",
