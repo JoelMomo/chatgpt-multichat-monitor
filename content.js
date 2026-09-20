@@ -812,6 +812,27 @@
     });
   }
 
+  function moveProjectSection(descriptor, direction) {
+    if (layoutLocked() || descriptor?.kind !== "project" || !descriptor.uiId) return Promise.resolve(null);
+    const now = Date.now();
+    const groups = projectDescriptors(chats.filter((chat) => isRecent(chat, now)));
+    const index = groups.findIndex((item) => item.uiId === descriptor.uiId);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= groups.length) return Promise.resolve(null);
+
+    const reordered = [...groups];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(nextIndex, 0, moved);
+
+    return sendMessage({
+      type: "monitor-set-project-order",
+      projectKeys: reordered.map((item) => item.uiId)
+    }).then((response) => {
+      if (response?.ok && response.undoId) showLayoutUndo("Project moved", response.undoId);
+      return response;
+    });
+  }
+
   function createSectionDropzone(sectionId, isEmpty) {
     const zone = document.createElement("div");
     zone.className = "section-dropzone" + (isEmpty ? " empty-section" : "");
@@ -962,11 +983,17 @@
     row.addEventListener("dragstart", (event) => {
       const descriptor = node.descriptor;
       const targetIsControl = event.target instanceof Element && event.target.closest("button,input");
-      if (!descriptor || descriptor.kind !== "manual" || targetIsControl) {
+      if (layoutLocked() ||
+          !descriptor ||
+          !["manual", "project"].includes(descriptor.kind) ||
+          targetIsControl) {
         event.preventDefault();
         return;
       }
-      draggedSeparatorId = descriptor.id;
+
+      draggedSectionToken = descriptor.kind === "project"
+        ? "p:" + descriptor.uiId
+        : "s:" + descriptor.id;
       draggedChatKey = null;
       row.classList.add("drag-source");
       list.classList.add("layout-dragging");
@@ -974,7 +1001,7 @@
       closeMenus();
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", "s:" + descriptor.id);
+        event.dataTransfer.setData("text/plain", draggedSectionToken);
       }
     });
 
@@ -983,7 +1010,7 @@
     caption.addEventListener("click", (event) => {
       event.stopPropagation();
       const descriptor = node.descriptor;
-      if (!descriptor) return;
+      if (layoutLocked() || !descriptor) return;
       clearTimeout(node.captionClickTimer);
       node.captionClickTimer = setTimeout(() => {
         setSectionCollapsed(descriptor, !descriptor.collapsed);
@@ -994,12 +1021,12 @@
       event.preventDefault();
       event.stopPropagation();
       clearTimeout(node.captionClickTimer);
-      if (node.descriptor?.kind === "manual") beginSectionRename(node);
+      if (!layoutLocked() && node.descriptor?.kind === "manual") beginSectionRename(node);
     });
 
     caption.addEventListener("keydown", (event) => {
       const descriptor = node.descriptor;
-      if (!descriptor) return;
+      if (layoutLocked() || !descriptor) return;
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         setSectionCollapsed(descriptor, !descriptor.collapsed);
@@ -1010,14 +1037,14 @@
     });
 
     row.addEventListener("dblclick", (event) => {
-      if (event.target.closest("button,input,.separator-caption")) return;
+      if (layoutLocked() || event.target.closest("button,input,.separator-caption")) return;
       if (node.descriptor?.kind === "manual") beginSectionRename(node);
     });
 
     more.addEventListener("click", (event) => {
       event.stopPropagation();
       const descriptor = node.descriptor;
-      if (!descriptor) return;
+      if (layoutLocked() || !descriptor) return;
       const willOpen = openMenuSectionId !== descriptor.uiId;
       closeMenus();
       if (willOpen) {
@@ -1027,7 +1054,7 @@
     });
 
     row.addEventListener("contextmenu", (event) => {
-      if (event.target.closest("input")) return;
+      if (layoutLocked() || event.target.closest("input")) return;
       event.preventDefault();
       event.stopPropagation();
       const descriptor = node.descriptor;
@@ -1088,13 +1115,13 @@
     };
 
     copy.addEventListener("dragstart", (event) => {
-      if (!node.chat || activeGroupMode() === "project") {
+      if (layoutLocked() || !node.chat || activeGroupMode() === "project") {
         event.preventDefault();
         return;
       }
 
       draggedChatKey = node.chat.chatKey;
-      draggedSeparatorId = null;
+      draggedSectionToken = null;
       row.classList.add("drag-source");
       list.classList.add("layout-dragging", "chat-dragging");
       closeMenus();
@@ -1174,7 +1201,7 @@
       );
     }
 
-    if (activeGroupMode() !== "project") {
+    if (!layoutLocked() && activeGroupMode() !== "project") {
       floatingMenu.append(
         createMenuButton("Move up", () => {
           moveChat(chat, -1).then(closeMenus);
@@ -1257,10 +1284,20 @@
           moveManualSection(descriptor, 1).then(closeMenus);
         }),
         createMenuButton("Delete section", () => {
+          if (layoutLocked()) return closeMenus();
           sendMessage({ type: "monitor-remove-separator", id: descriptor.id }).then((response) => {
             if (response?.ok && response.undoId) showLayoutUndo("Section removed", response.undoId);
             closeMenus();
           });
+        })
+      );
+    } else if (descriptor.kind === "project") {
+      floatingMenu.append(
+        createMenuButton("Move project up", () => {
+          moveProjectSection(descriptor, -1).then(closeMenus);
+        }),
+        createMenuButton("Move project down", () => {
+          moveProjectSection(descriptor, 1).then(closeMenus);
         })
       );
     }
