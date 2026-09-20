@@ -2209,6 +2209,18 @@
       applyPosition(settings.monitorPosition);
     }
 
+    if (changes.monitorLayoutLocked && layoutLocked()) {
+      dragging = null;
+      resizing = null;
+      panel?.classList.remove("dragging", "resizing");
+      if (host) {
+        host.style.pointerEvents = "none";
+        host.style.cursor = "";
+      }
+      finishLayoutDrag();
+      closeMenus();
+    }
+
     render();
   });
 
