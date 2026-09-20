@@ -610,6 +610,23 @@
     });
   }
 
+  function activeGroupMode() {
+    return ["project", "manual", "none"].includes(settings.monitorGroupMode)
+      ? settings.monitorGroupMode
+      : "project";
+  }
+
+  function sectionUiState(sectionKey) {
+    const all = settings.monitorSectionUi;
+    if (!all || typeof all !== "object") return {};
+    const value = all[sectionKey];
+    return value && typeof value === "object" ? value : {};
+  }
+
+  function projectSectionKey(chat) {
+    return "project:" + (chat.projectKey || "none");
+  }
+
   function layoutTokenForElement(element) {
     if (!(element instanceof Element)) return "";
     if (element.dataset.separatorId) return "s:" + element.dataset.separatorId;
@@ -624,6 +641,7 @@
   }
 
   function persistLayoutMove(draggedToken, targetToken, before) {
+    if (activeGroupMode() === "project") return Promise.resolve(null);
     const tokens = currentLayoutTokens().filter((token) => token !== draggedToken);
     let targetIndex = tokens.indexOf(targetToken);
     if (targetIndex < 0) return Promise.resolve(null);
@@ -631,7 +649,7 @@
     tokens.splice(targetIndex, 0, draggedToken);
     return sendMessage({ type: "monitor-set-layout", tokens }).then((response) => {
       if (response?.ok && response.undoId) {
-        showLayoutUndo(draggedToken.startsWith("s:") ? "Separator moved" : "Chat moved", response.undoId);
+        showLayoutUndo(draggedToken.startsWith("s:") ? "Section moved" : "Chat moved", response.undoId);
       }
       return response;
     });
@@ -639,12 +657,16 @@
 
   function visibleGroupFor(chat) {
     const now = Date.now();
-    return chats.filter((item) =>
-      !item.hidden &&
-      item.pinned === chat.pinned &&
-      (!separators.length || (item.section === chat.section && item.state === chat.state)) &&
-      isRecent(item, now)
-    );
+    const mode = activeGroupMode();
+    if (mode === "project") return [];
+
+    return chats.filter((item) => {
+      if (item.hidden || item.pinned !== chat.pinned || !isRecent(item, now)) return false;
+      if (mode === "manual" && separators.length) {
+        return item.section === chat.section && item.state === chat.state;
+      }
+      return true;
+    });
   }
 
   function persistGroupOrder(group) {
@@ -658,6 +680,7 @@
   }
 
   function moveChat(chat, direction) {
+    if (activeGroupMode() === "project") return Promise.resolve(null);
     const group = visibleGroupFor(chat);
     const index = group.findIndex((item) => item.chatKey === chat.chatKey);
     const nextIndex = index + direction;
@@ -684,6 +707,44 @@
     undoToast.dataset.undoId = undoId;
     undoToast.hidden = false;
     undoTimer = setTimeout(hideLayoutUndo, 6500);
+  }
+
+  function setSectionCollapsed(descriptor, collapsed) {
+    if (!descriptor?.uiId) return Promise.resolve(null);
+    return sendMessage({
+      type: "monitor-set-section-collapsed",
+      sectionKey: descriptor.uiId,
+      collapsed: collapsed === true
+    }).then((response) => {
+      if (response?.ok && response.undoId) {
+        showLayoutUndo(collapsed ? "Section collapsed" : "Section expanded", response.undoId);
+      }
+      return response;
+    });
+  }
+
+  function renameManualSection(descriptor, name) {
+    if (descriptor?.kind !== "manual" || !descriptor.id) return Promise.resolve(null);
+    return sendMessage({
+      type: "monitor-set-separator-meta",
+      id: descriptor.id,
+      patch: { name }
+    }).then((response) => {
+      if (response?.ok && response.undoId) showLayoutUndo("Section renamed", response.undoId);
+      return response;
+    });
+  }
+
+  function moveManualSection(descriptor, direction) {
+    if (descriptor?.kind !== "manual" || !descriptor.id) return Promise.resolve(null);
+    return sendMessage({
+      type: "monitor-move-separator",
+      id: descriptor.id,
+      direction
+    }).then((response) => {
+      if (response?.ok && response.undoId) showLayoutUndo("Section moved", response.undoId);
+      return response;
+    });
   }
 
   function createSectionDropzone(sectionId, isEmpty) {
@@ -713,8 +774,8 @@
     for (const node of rowNodes.values()) {
       node.row.classList.toggle("drop-section", (node.row.dataset.sectionId || "") === sectionId);
     }
-    for (const [id, node] of separatorNodes) {
-      node.row.classList.toggle("drop-section", id === sectionId);
+    for (const node of separatorNodes.values()) {
+      node.row.classList.toggle("drop-section", (node.row.dataset.sectionId || "") === sectionId);
     }
     for (const [id, zone] of sectionDropNodes) {
       zone.classList.toggle("drop-section", id === sectionId);
@@ -735,6 +796,7 @@
 
   function closeMenus() {
     openMenuTabId = null;
+    openMenuSectionId = null;
     if (floatingMenu) floatingMenu.hidden = true;
   }
 
@@ -750,28 +812,92 @@
     return button;
   }
 
-  function createSeparatorRow(id) {
+  function beginSectionRename(node) {
+    const descriptor = node?.descriptor;
+    if (!descriptor || descriptor.kind !== "manual") return;
+    clearTimeout(node.captionClickTimer);
+    node.caption.hidden = true;
+    node.input.hidden = false;
+    node.input.value = descriptor.name || "";
+    node.input.focus();
+    node.input.select();
+
+    let settled = false;
+    const finish = (save) => {
+      if (settled) return;
+      settled = true;
+      const value = node.input.value;
+      node.input.hidden = true;
+      node.caption.hidden = !descriptor.name;
+      if (save) renameManualSection(descriptor, value);
+    };
+
+    node.input.onkeydown = (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        finish(true);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        finish(false);
+      }
+    };
+    node.input.onblur = () => finish(true);
+  }
+
+  function createSeparatorRow(uiId) {
     const row = document.createElement("div");
     row.className = "section-separator";
-    row.dataset.separatorId = id;
+    row.dataset.groupId = uiId;
 
-    const line = document.createElement("span");
-    line.className = "separator-line";
-    line.draggable = true;
-    line.title = "Drag separator";
-    line.setAttribute("aria-label", "Drag separator");
+    const before = document.createElement("span");
+    before.className = "separator-rule separator-rule-before";
 
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "separator-remove";
-    remove.textContent = "×";
-    remove.title = "Remove separator";
-    remove.setAttribute("aria-label", "Remove separator");
+    const caption = document.createElement("span");
+    caption.className = "separator-caption";
 
-    row.append(line, remove);
+    const input = document.createElement("input");
+    input.className = "separator-input";
+    input.type = "text";
+    input.maxLength = 40;
+    input.hidden = true;
+    input.setAttribute("aria-label", "Section name");
 
-    line.addEventListener("dragstart", (event) => {
-      draggedSeparatorId = id;
+    const after = document.createElement("span");
+    after.className = "separator-rule separator-rule-after";
+
+    const count = document.createElement("span");
+    count.className = "separator-count";
+    count.hidden = true;
+
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "separator-more";
+    more.textContent = "...";
+    more.title = "Section options";
+    more.setAttribute("aria-label", "Section options");
+    more.draggable = false;
+
+    row.append(before, caption, input, after, count, more);
+
+    const node = {
+      row,
+      before,
+      caption,
+      input,
+      after,
+      count,
+      more,
+      descriptor: null,
+      captionClickTimer: null
+    };
+
+    row.addEventListener("dragstart", (event) => {
+      const descriptor = node.descriptor;
+      if (!descriptor || descriptor.kind !== "manual" || event.target.closest("button,input")) {
+        event.preventDefault();
+        return;
+      }
+      draggedSeparatorId = descriptor.id;
       draggedChatKey = null;
       row.classList.add("drag-source");
       list.classList.add("layout-dragging");
@@ -779,21 +905,58 @@
       closeMenus();
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", "s:" + id);
+        event.dataTransfer.setData("text/plain", "s:" + descriptor.id);
       }
     });
 
-    line.addEventListener("dragend", finishLayoutDrag);
+    row.addEventListener("dragend", finishLayoutDrag);
 
-    remove.addEventListener("click", (event) => {
+    caption.addEventListener("click", (event) => {
       event.stopPropagation();
-      sendMessage({ type: "monitor-remove-separator", id }).then((response) => {
-        if (response?.ok && response.undoId) showLayoutUndo("Separator removed", response.undoId);
-      });
+      const descriptor = node.descriptor;
+      if (!descriptor) return;
+      clearTimeout(node.captionClickTimer);
+      node.captionClickTimer = setTimeout(() => {
+        setSectionCollapsed(descriptor, !descriptor.collapsed);
+      }, 220);
     });
 
-    const node = { row, line, remove };
-    separatorNodes.set(id, node);
+    caption.addEventListener("dblclick", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      clearTimeout(node.captionClickTimer);
+      if (node.descriptor?.kind === "manual") beginSectionRename(node);
+    });
+
+    row.addEventListener("dblclick", (event) => {
+      if (event.target.closest("button,input,.separator-caption")) return;
+      if (node.descriptor?.kind === "manual") beginSectionRename(node);
+    });
+
+    more.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const descriptor = node.descriptor;
+      if (!descriptor) return;
+      const willOpen = openMenuSectionId !== descriptor.uiId;
+      closeMenus();
+      if (willOpen) {
+        openMenuSectionId = descriptor.uiId;
+        openSectionMenu(more, descriptor, node);
+      }
+    });
+
+    row.addEventListener("contextmenu", (event) => {
+      if (event.target.closest("input")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const descriptor = node.descriptor;
+      if (!descriptor) return;
+      closeMenus();
+      openMenuSectionId = descriptor.uiId;
+      openSectionMenu(row, descriptor, node);
+    });
+
+    separatorNodes.set(uiId, node);
     return node;
   }
 
