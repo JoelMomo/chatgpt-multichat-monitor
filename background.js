@@ -9,6 +9,7 @@ const HISTORY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const UPDATE_STATE_KEY = "monitorUpdateState";
 const WHATS_NEW_KEY = "monitorWhatsNewState";
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const LAYOUT_UNDO_TTL_MS = 10000;
 const RELEASES_API_URL =
   "https://api.github.com/repos/JoelMomo/chatgpt-multichat-monitor/releases/latest";
 const RELEASES_PAGE_URL =
@@ -56,6 +57,7 @@ let initPromise = null;
 let updateCheckPromise = null;
 let lastAudioRequestAt = 0;
 const pendingDoneSoundTimers = new Map();
+const layoutUndos = new Map();
 
 function cleanTitle(title) {
   const value = String(title || "")
@@ -732,6 +734,7 @@ async function clearChatPreferenceField(field) {
 
 async function setChatOrder(keys) {
   await ensureInitialized();
+  const before = captureLayoutState();
   const ordered = [...new Set(
     (Array.isArray(keys) ? keys : [])
       .filter((key) => typeof key === "string" && key)
@@ -744,7 +747,7 @@ async function setChatOrder(keys) {
   ].slice(0, 200);
 
   await chrome.storage.local.set({ [ORDER_KEY]: chatOrder });
-  return true;
+  return { ok: true, undoId: registerLayoutUndo(before) };
 }
 
 async function resetChatOrder() {
@@ -754,6 +757,87 @@ async function resetChatOrder() {
   return true;
 }
 
+function captureLayoutState() {
+  const sectionsByChat = {};
+  for (const [key, prefs] of Object.entries(chatPrefs)) {
+    if (typeof prefs?.section === "string" && prefs.section) {
+      sectionsByChat[key] = prefs.section;
+    }
+  }
+  return {
+    sections: [...sections],
+    chatOrder: [...chatOrder],
+    sectionsByChat
+  };
+}
+
+function registerLayoutUndo(state) {
+  const id = globalThis.crypto?.randomUUID
+    ? crypto.randomUUID()
+    : Date.now().toString(36) + ":" + Math.random().toString(36).slice(2, 10);
+  const timer = setTimeout(() => layoutUndos.delete(id), LAYOUT_UNDO_TTL_MS);
+  layoutUndos.set(id, { state, timer });
+  return id;
+}
+
+async function restoreLayoutUndo(id) {
+  await ensureInitialized();
+  const entry = layoutUndos.get(id);
+  if (!entry) return false;
+  clearTimeout(entry.timer);
+  layoutUndos.delete(id);
+
+  sections = Array.isArray(entry.state.sections)
+    ? [...new Set(entry.state.sections.filter((value) => typeof value === "string" && value))].slice(0, 40)
+    : [];
+  chatOrder = Array.isArray(entry.state.chatOrder)
+    ? [...new Set(entry.state.chatOrder.filter((value) => typeof value === "string" && value))].slice(0, 200)
+    : [];
+
+  for (const key of Object.keys(chatPrefs)) {
+    const next = { ...chatPrefs[key] };
+    delete next.section;
+    if (!next.alias && !next.pinned && !next.hidden && !next.pending) delete chatPrefs[key];
+    else chatPrefs[key] = next;
+  }
+
+  const sectionsByChat = entry.state.sectionsByChat && typeof entry.state.sectionsByChat === "object"
+    ? entry.state.sectionsByChat
+    : {};
+  for (const [key, section] of Object.entries(sectionsByChat)) {
+    if (!sections.includes(section)) continue;
+    chatPrefs[key] = { ...prefsFor(key), section };
+  }
+
+  await chrome.storage.local.set({
+    [SECTIONS_KEY]: sections,
+    [ORDER_KEY]: chatOrder,
+    [PREFS_KEY]: chatPrefs
+  });
+  return true;
+}
+
+async function resetLayout() {
+  await ensureInitialized();
+  const before = captureLayoutState();
+  sections = [];
+  chatOrder = [];
+
+  for (const key of Object.keys(chatPrefs)) {
+    const next = { ...chatPrefs[key] };
+    delete next.section;
+    if (!next.alias && !next.pinned && !next.hidden && !next.pending) delete chatPrefs[key];
+    else chatPrefs[key] = next;
+  }
+
+  await chrome.storage.local.set({
+    [SECTIONS_KEY]: [],
+    [ORDER_KEY]: [],
+    [PREFS_KEY]: chatPrefs
+  });
+  return { ok: true, undoId: registerLayoutUndo(before) };
+}
+
 function createSeparatorId() {
   if (globalThis.crypto?.randomUUID) return "section:" + crypto.randomUUID();
   return "section:" + Date.now().toString(36) + ":" + Math.random().toString(36).slice(2, 10);
@@ -761,16 +845,18 @@ function createSeparatorId() {
 
 async function addSeparator() {
   await ensureInitialized();
+  const before = captureLayoutState();
   const id = createSeparatorId();
   sections = [...sections, id].slice(0, 40);
   await chrome.storage.local.set({ [SECTIONS_KEY]: sections });
-  return id;
+  return { ok: true, id, undoId: registerLayoutUndo(before) };
 }
 
 async function removeSeparator(id) {
   await ensureInitialized();
   const index = sections.indexOf(id);
-  if (index < 0) return false;
+  if (index < 0) return { ok: false };
+  const before = captureLayoutState();
   const fallback = index > 0 ? sections[index - 1] : "";
   sections.splice(index, 1);
 
@@ -787,11 +873,12 @@ async function removeSeparator(id) {
     [SECTIONS_KEY]: sections,
     [PREFS_KEY]: chatPrefs
   });
-  return true;
+  return { ok: true, undoId: registerLayoutUndo(before) };
 }
 
 async function setLayout(tokens) {
   await ensureInitialized();
+  const before = captureLayoutState();
   const input = Array.isArray(tokens) ? tokens : [];
   const validSections = new Set(sections);
   const orderedSections = [];
@@ -833,7 +920,7 @@ async function setLayout(tokens) {
     [PREFS_KEY]: chatPrefs,
     [ORDER_KEY]: chatOrder
   });
-  return true;
+  return { ok: true, undoId: registerLayoutUndo(before) };
 }
 
 async function cycleChat(states) {
@@ -958,28 +1045,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === "monitor-set-chat-order") {
     setChatOrder(message.chatKeys)
-      .then((ok) => broadcast().then(() => sendResponse({ ok })))
+      .then((result) => broadcast().then(() => sendResponse(result)))
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
 
   if (message?.type === "monitor-set-layout") {
     setLayout(message.tokens)
-      .then((ok) => broadcast().then(() => sendResponse({ ok })))
+      .then((result) => broadcast().then(() => sendResponse(result)))
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
 
   if (message?.type === "monitor-add-separator") {
     addSeparator()
-      .then((id) => broadcast().then(() => sendResponse({ ok: true, id })))
+      .then((result) => broadcast().then(() => sendResponse(result)))
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
 
   if (message?.type === "monitor-remove-separator") {
     removeSeparator(String(message.id || ""))
+      .then((result) => broadcast().then(() => sendResponse(result)))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-undo-layout") {
+    restoreLayoutUndo(String(message.undoId || ""))
       .then((ok) => broadcast().then(() => sendResponse({ ok })))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-reset-layout") {
+    resetLayout()
+      .then((result) => broadcast().then(() => sendResponse(result)))
       .catch(() => sendResponse({ ok: false }));
     return true;
   }

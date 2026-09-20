@@ -29,6 +29,7 @@ const clearAliases = document.getElementById("clearAliases");
 const clearPins = document.getElementById("clearPins");
 const clearPending = document.getElementById("clearPending");
 const resetOrder = document.getElementById("resetOrder");
+const resetLayout = document.getElementById("resetLayout");
 const clearHistory = document.getElementById("clearHistory");
 const historyRoot = document.getElementById("history");
 const historySummary = document.getElementById("historySummary");
@@ -295,6 +296,13 @@ resetOrder.addEventListener("click", async () => {
     type: "monitor-reset-chat-order"
   }).catch(() => null);
   showButtonResult(resetOrder, response?.ok ? "Reset" : "Failed", "Reset chat order");
+});
+
+resetLayout.addEventListener("click", async () => {
+  const response = await chrome.runtime.sendMessage({
+    type: "monitor-reset-layout"
+  }).catch(() => null);
+  showButtonResult(resetLayout, response?.ok ? "Reset" : "Failed", "Reset layout");
 });
 
 soundsEnabled.addEventListener("change", () => {

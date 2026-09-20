@@ -57,12 +57,16 @@
   let resizing = null;
   let openMenuTabId = null;
   let floatingMenu = null;
+  let undoToast = null;
+  let undoToastLabel = null;
+  let undoTimer = null;
   let draggedChatKey = null;
   let draggedSeparatorId = null;
   let dropTarget = null;
 
   const rowNodes = new Map();
   const separatorNodes = new Map();
+  const sectionDropNodes = new Map();
   const renderedStates = new Map();
 
   function isVisible(element) {
@@ -481,7 +485,12 @@
     if (targetIndex < 0) return Promise.resolve(null);
     if (!before) targetIndex += 1;
     tokens.splice(targetIndex, 0, draggedToken);
-    return sendMessage({ type: "monitor-set-layout", tokens });
+    return sendMessage({ type: "monitor-set-layout", tokens }).then((response) => {
+      if (response?.ok && response.undoId) {
+        showLayoutUndo(draggedToken.startsWith("s:") ? "Separator moved" : "Chat moved", response.undoId);
+      }
+      return response;
+    });
   }
 
   function visibleGroupFor(chat) {
@@ -498,6 +507,9 @@
     return sendMessage({
       type: "monitor-set-chat-order",
       chatKeys: group.map((item) => item.chatKey)
+    }).then((response) => {
+      if (response?.ok && response.undoId) showLayoutUndo("Chat moved", response.undoId);
+      return response;
     });
   }
 
@@ -513,14 +525,68 @@
     return persistGroupOrder(reordered);
   }
 
+  function hideLayoutUndo() {
+    if (undoTimer) {
+      clearTimeout(undoTimer);
+      undoTimer = null;
+    }
+    if (undoToast) undoToast.hidden = true;
+  }
+
+  function showLayoutUndo(label, undoId) {
+    if (!undoToast || !undoToastLabel || !undoId) return;
+    hideLayoutUndo();
+    undoToastLabel.textContent = label;
+    undoToast.dataset.undoId = undoId;
+    undoToast.hidden = false;
+    undoTimer = setTimeout(hideLayoutUndo, 6500);
+  }
+
+  function createSectionDropzone(sectionId, isEmpty) {
+    const zone = document.createElement("div");
+    zone.className = "section-dropzone" + (isEmpty ? " empty-section" : "");
+    zone.dataset.sectionId = sectionId;
+    zone.textContent = "Drop here";
+    zone.setAttribute("aria-hidden", "true");
+    sectionDropNodes.set(sectionId, zone);
+    return zone;
+  }
+
   function clearDropMarkers() {
     dropTarget = null;
     for (const node of rowNodes.values()) {
-      node.row.classList.remove("drop-before", "drop-after", "drag-source");
+      node.row.classList.remove("drop-before", "drop-after", "drop-section");
     }
     for (const node of separatorNodes.values()) {
-      node.row.classList.remove("drop-before", "drop-after", "drag-source");
+      node.row.classList.remove("drop-before", "drop-after", "drop-section");
     }
+    for (const zone of sectionDropNodes.values()) {
+      zone.classList.remove("drop-section");
+    }
+  }
+
+  function markDropSection(sectionId) {
+    for (const node of rowNodes.values()) {
+      node.row.classList.toggle("drop-section", (node.row.dataset.sectionId || "") === sectionId);
+    }
+    for (const [id, node] of separatorNodes) {
+      node.row.classList.toggle("drop-section", id === sectionId);
+    }
+    for (const [id, zone] of sectionDropNodes) {
+      zone.classList.toggle("drop-section", id === sectionId);
+    }
+  }
+
+  function finishLayoutDrag() {
+    draggedChatKey = null;
+    draggedSeparatorId = null;
+    if (list) list.classList.remove("layout-dragging", "chat-dragging");
+    for (const node of rowNodes.values()) node.row.classList.remove("drag-source");
+    for (const node of separatorNodes.values()) node.row.classList.remove("drag-source");
+    for (const zone of sectionDropNodes.values()) {
+      zone.classList.remove("source-will-empty");
+    }
+    clearDropMarkers();
   }
 
   function closeMenus() {
@@ -564,6 +630,8 @@
       draggedSeparatorId = id;
       draggedChatKey = null;
       row.classList.add("drag-source");
+      list.classList.add("layout-dragging");
+      list.classList.remove("chat-dragging");
       closeMenus();
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
@@ -571,14 +639,13 @@
       }
     });
 
-    line.addEventListener("dragend", () => {
-      draggedSeparatorId = null;
-      clearDropMarkers();
-    });
+    line.addEventListener("dragend", finishLayoutDrag);
 
     remove.addEventListener("click", (event) => {
       event.stopPropagation();
-      sendMessage({ type: "monitor-remove-separator", id });
+      sendMessage({ type: "monitor-remove-separator", id }).then((response) => {
+        if (response?.ok && response.undoId) showLayoutUndo("Separator removed", response.undoId);
+      });
     });
 
     const node = { row, line, remove };
@@ -640,7 +707,16 @@
       draggedChatKey = node.chat.chatKey;
       draggedSeparatorId = null;
       row.classList.add("drag-source");
+      list.classList.add("layout-dragging", "chat-dragging");
       closeMenus();
+
+      const sourceSection = node.chat.section || "";
+      const members = [...rowNodes.values()].filter((item) =>
+        item.chat && (item.chat.section || "") === sourceSection && item.row.isConnected
+      );
+      if (members.length === 1) {
+        sectionDropNodes.get(sourceSection)?.classList.add("source-will-empty");
+      }
 
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
@@ -648,10 +724,7 @@
       }
     });
 
-    copy.addEventListener("dragend", () => {
-      draggedChatKey = null;
-      clearDropMarkers();
-    });
+    copy.addEventListener("dragend", finishLayoutDrag);
 
     dot.addEventListener("contextmenu", (event) => {
       if (!node.chat || !["idle", "pending"].includes(node.chat.state)) return;
@@ -875,6 +948,8 @@
         separatorNodes.delete(id);
       }
     }
+    for (const zone of sectionDropNodes.values()) zone.remove();
+    sectionDropNodes.clear();
 
     const groups = new Map([["", []]]);
     for (const separator of separators) groups.set(separator.id, []);
@@ -887,6 +962,7 @@
       const node = rowNodes.get(chat.tabId) || createRow(chat.tabId);
       node.chat = chat;
       node.row.dataset.chatKey = chat.chatKey;
+      node.row.dataset.sectionId = groups.has(chat.section) ? chat.section : "";
       node.row.className = "chat-row state-" + chat.state;
       if (chat.url === location.href) node.row.classList.add("current");
       if (chat.pinned) node.row.classList.add("pinned");
@@ -908,12 +984,19 @@
       list.appendChild(node.row);
     };
 
-    for (const chat of groups.get("")) appendChat(chat);
+    const rootChats = groups.get("");
+    for (const chat of rootChats) appendChat(chat);
+    if (separators.length) {
+      list.appendChild(createSectionDropzone("", rootChats.length === 0));
+    }
+
     for (const separator of separators) {
       const node = separatorNodes.get(separator.id) || createSeparatorRow(separator.id);
       node.row.className = "section-separator";
       list.appendChild(node.row);
-      for (const chat of groups.get(separator.id)) appendChat(chat);
+      const sectionChats = groups.get(separator.id);
+      for (const chat of sectionChats) appendChat(chat);
+      list.appendChild(createSectionDropzone(separator.id, sectionChats.length === 0));
     }
 
     empty.hidden = hasContent;
@@ -1090,6 +1173,8 @@
       ".chat-row:hover,.chat-row.current{background:#1a202a}.chat-row.drag-source,.section-separator.drag-source{opacity:.42}" +
       ".chat-row.drop-before::before,.chat-row.drop-after::after,.section-separator.drop-before::before,.section-separator.drop-after::after{content:'';position:absolute;left:7px;right:7px;height:2px;border-radius:999px;background:#63e6d7}" +
       ".chat-row.drop-before::before,.section-separator.drop-before::before{top:-1px}.chat-row.drop-after::after,.section-separator.drop-after::after{bottom:-1px}" +
+      ".chat-row.drop-section{background:rgba(99,230,215,.045)}.section-separator.drop-section .separator-line::after{background:rgba(99,230,215,.48)}" +
+      ".section-dropzone{display:none;height:30px;margin:3px 5px;border:1px dashed #354052;border-radius:8px;align-items:center;justify-content:center;color:#697789;font:600 10px/1 system-ui;letter-spacing:.01em}.chat-dragging .section-dropzone.empty-section,.chat-dragging .section-dropzone.source-will-empty{display:flex}.section-dropzone.drop-section{border-color:rgba(99,230,215,.72);background:rgba(99,230,215,.06);color:#8bded4}" +
       ".section-separator{position:relative;height:22px;display:flex;align-items:center;gap:4px;padding:0 5px}.separator-line{position:relative;height:14px;flex:1;cursor:grab;user-select:none}.separator-line:active{cursor:grabbing}.separator-line::after{content:'';position:absolute;left:0;right:0;top:50%;height:1px;background:#303846;transform:translateY(-50%)}.separator-remove{width:20px;height:20px;border:0;border-radius:6px;background:transparent;color:#687386;font:500 15px/1 system-ui;cursor:pointer;opacity:0}.section-separator:hover .separator-remove,.separator-remove:focus-visible{opacity:.8}.separator-remove:hover{background:#252d38;color:#d9e0e8}" +
 
       ".chat-main{min-width:0;flex:1;display:flex;align-items:center;" +
@@ -1112,6 +1197,7 @@
       ".menu-action{display:block;width:100%;border:0;border-radius:6px;padding:7px 8px;background:transparent;" +
       "color:#d9e0e8;text-align:left;font:12px system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}" +
       ".menu-action:hover{background:#252d38}" +
+      ".undo-toast{position:absolute;z-index:5;left:50%;bottom:43px;transform:translateX(-50%);display:flex;align-items:center;gap:9px;max-width:calc(100% - 20px);padding:7px 8px 7px 10px;border:1px solid #3a4555;border-radius:9px;background:#1b222c;box-shadow:0 8px 24px rgba(0,0,0,.34);font:600 11px/1.2 system-ui;white-space:nowrap}.undo-toast[hidden]{display:none}.undo-label{min-width:0;overflow:hidden;text-overflow:ellipsis}.undo-button{height:23px;border:0;border-radius:6px;padding:0 7px;background:#283544;color:#7ee2d7;font:750 10px system-ui;cursor:pointer}.undo-button:hover{background:#334354;color:#a3eee6}" +
       ".empty{padding:18px 14px 20px;color:#8e9bad;text-align:center;font-size:12px}" +
       ".foot{min-height:35px;display:flex;align-items:center;justify-content:center;gap:8px;padding:7px 9px 8px 12px;color:#6f7c8e;text-align:center;font-size:10px;border-top:1px solid #29313d}" +
       ".foot-copy{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.auto-size-button{display:inline-flex;align-items:center;flex:0 0 auto;height:22px;padding:0 7px;border:1px solid #354052;border-radius:7px;background:#171d26;color:#aeb8c7;font:600 10px system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}" +
@@ -1121,7 +1207,7 @@
       "#panel.compact{width:214px}#panel.compact.collapsed{width:214px}" +
       ".compact .head{height:36px;padding:0 6px 0 9px;gap:5px}.compact .brand{font-size:0}.compact .brand::after{content:'Monitor';font-size:11px}" +
       ".compact .summary{gap:3px}.compact .count-badge{width:18px;height:18px;font-size:9px}.compact .add-separator{width:22px;height:22px}.compact .add-separator::before{left:6px;right:6px;top:7px;box-shadow:0 5px 0 currentColor}.compact .add-separator::after{right:2px;bottom:1px}.compact .meta,.compact .foot{display:none}" +
-      ".compact .list{padding:3px}.compact .chat-main{padding:5px 4px 5px 7px;gap:7px}.compact .copy{margin:-5px 0;padding:5px 0}.compact .section-separator{height:18px}.compact .separator-remove{width:18px;height:18px}" +
+      ".compact .list{padding:3px}.compact .chat-main{padding:5px 4px 5px 7px;gap:7px}.compact .copy{margin:-5px 0;padding:5px 0}.compact .section-separator{height:18px}.compact .section-dropzone{height:24px;margin:2px 4px}.compact .separator-remove{width:18px;height:18px}.compact .undo-toast{bottom:7px}" +
 
       ".compact .more{width:22px;height:22px;margin-right:2px;opacity:.18;transition:opacity .12s}.compact .chat-row:hover .more,.compact .more:focus-visible{opacity:1}" +
       ".compact .dot{width:8px;height:8px}" +
@@ -1132,8 +1218,9 @@
       ":host([data-theme='light']) #panel.dragging,:host([data-theme='light']) #panel.resizing{box-shadow:0 20px 54px rgba(31,43,58,.26)}" +
       ":host([data-theme='light']) .head{border-bottom-color:#dce3ec}:host([data-theme='light']) .count-badge{box-shadow:inset 0 0 0 1px rgba(31,43,58,.06)}:host([data-theme='light']) .count-working{background:rgba(35,143,132,.11);color:#238f84}:host([data-theme='light']) .count-done{background:rgba(90,142,38,.11);color:#5a8e26}:host([data-theme='light']) .count-pending{background:rgba(182,59,125,.1);color:#b63b7d}:host([data-theme='light']) .count-attention{background:rgba(164,91,31,.11);color:#a45b1f}" +
       ":host([data-theme='light']) .add-separator{color:#6c798b}:host([data-theme='light']) .add-separator:hover{background:#e8edf3;color:#263342}:host([data-theme='light']) .add-separator::after{background:#f7f9fc}:host([data-theme='light']) .collapse{color:#647286}:host([data-theme='light']) .collapse:hover{background:#e8edf3;color:#182331}" +
-      ":host([data-theme='light']) .chat-row:hover,:host([data-theme='light']) .chat-row.current{background:#eaf0f6}" +
-      ":host([data-theme='light']) .separator-line::after{background:#d5dde8}:host([data-theme='light']) .separator-remove{color:#8794a5}:host([data-theme='light']) .separator-remove:hover{background:#e8edf3;color:#263342}" +
+      ":host([data-theme='light']) .chat-row:hover,:host([data-theme='light']) .chat-row.current{background:#eaf0f6}:host([data-theme='light']) .chat-row.drop-section{background:rgba(35,143,132,.065)}" +
+      ":host([data-theme='light']) .separator-line::after{background:#d5dde8}:host([data-theme='light']) .section-separator.drop-section .separator-line::after{background:rgba(35,143,132,.5)}:host([data-theme='light']) .section-dropzone{border-color:#c7d2df;color:#8190a2}:host([data-theme='light']) .section-dropzone.drop-section{border-color:rgba(35,143,132,.58);background:rgba(35,143,132,.055);color:#287f77}:host([data-theme='light']) .separator-remove{color:#8794a5}:host([data-theme='light']) .separator-remove:hover{background:#e8edf3;color:#263342}" +
+      ":host([data-theme='light']) .undo-toast{border-color:#cbd5e0;background:#fff;box-shadow:0 8px 24px rgba(31,43,58,.18)}:host([data-theme='light']) .undo-button{background:#e5f2f0;color:#238f84}:host([data-theme='light']) .undo-button:hover{background:#d7ebe8;color:#176f67}" +
       ":host([data-theme='light']) .more{color:#6c798b}:host([data-theme='light']) .more:hover{background:#dfe6ee;color:#182331}" +
       ":host([data-theme='light']) .meta{color:#68778b}:host([data-theme='light']) .pinned .chat-title{color:#17212d}" +
       ":host([data-theme='light']) .floating-menu{border-color:#ced7e2;background:#ffffff;box-shadow:0 10px 26px rgba(31,43,58,.2)}" +
@@ -1216,7 +1303,21 @@
     resizeHandle.setAttribute("role", "separator");
     resizeHandle.setAttribute("aria-label", "Resize monitor");
 
-    panel.append(header, list, empty, foot, resizeHandle);
+    undoToast = document.createElement("div");
+    undoToast.className = "undo-toast";
+    undoToast.hidden = true;
+
+    undoToastLabel = document.createElement("span");
+    undoToastLabel.className = "undo-label";
+
+    const undoButton = document.createElement("button");
+    undoButton.type = "button";
+    undoButton.className = "undo-button";
+    undoButton.textContent = "Undo";
+    undoButton.setAttribute("aria-label", "Undo last layout change");
+
+    undoToast.append(undoToastLabel, undoButton);
+    panel.append(header, list, empty, foot, resizeHandle, undoToast);
 
     floatingMenu = document.createElement("div");
     floatingMenu.className = "floating-menu";
@@ -1227,7 +1328,16 @@
 
     addSeparatorButton.addEventListener("click", (event) => {
       event.stopPropagation();
-      sendMessage({ type: "monitor-add-separator" });
+      sendMessage({ type: "monitor-add-separator" }).then((response) => {
+        if (response?.ok && response.undoId) showLayoutUndo("Separator added", response.undoId);
+      });
+    });
+
+    undoButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const undoId = undoToast?.dataset.undoId || "";
+      hideLayoutUndo();
+      if (undoId) sendMessage({ type: "monitor-undo-layout", undoId });
     });
 
     collapseButton.addEventListener("click", () => {
@@ -1264,25 +1374,62 @@
       if (!draggedToken) return;
 
       const targetRow = event.target instanceof Element
-        ? event.target.closest(".chat-row, .section-separator")
+        ? event.target.closest(".chat-row, .section-separator, .section-dropzone")
         : null;
       if (!targetRow) return;
-      const targetToken = layoutTokenForElement(targetRow);
-      if (!targetToken || targetToken === draggedToken) return;
 
+      let targetToken = "";
+      let before = false;
+      let targetSection = "";
+
+      if (targetRow.classList.contains("section-dropzone")) {
+        targetSection = targetRow.dataset.sectionId || "";
+        if (targetSection) {
+          targetToken = "s:" + targetSection;
+          before = false;
+        } else {
+          const firstSeparator = separators[0]?.id || "";
+          if (!firstSeparator) return;
+          targetToken = "s:" + firstSeparator;
+          before = true;
+        }
+      } else {
+        targetToken = layoutTokenForElement(targetRow);
+        if (!targetToken || targetToken === draggedToken) return;
+        const rect = targetRow.getBoundingClientRect();
+        before = event.clientY < rect.top + rect.height / 2;
+
+        if (targetRow.classList.contains("chat-row")) {
+          targetSection = targetRow.dataset.sectionId || "";
+        } else {
+          const separatorId = targetRow.dataset.separatorId || "";
+          if (!before) {
+            targetSection = separatorId;
+          } else {
+            const index = separators.findIndex((item) => item.id === separatorId);
+            targetSection = index > 0 ? separators[index - 1].id : "";
+          }
+        }
+      }
+
+      if (!targetToken || targetToken === draggedToken) return;
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
 
       for (const node of rowNodes.values()) {
-        node.row.classList.remove("drop-before", "drop-after");
+        node.row.classList.remove("drop-before", "drop-after", "drop-section");
       }
       for (const node of separatorNodes.values()) {
-        node.row.classList.remove("drop-before", "drop-after");
+        node.row.classList.remove("drop-before", "drop-after", "drop-section");
+      }
+      for (const zone of sectionDropNodes.values()) {
+        zone.classList.remove("drop-section");
       }
 
-      const rect = targetRow.getBoundingClientRect();
-      const before = event.clientY < rect.top + rect.height / 2;
-      targetRow.classList.add(before ? "drop-before" : "drop-after");
+      if (!targetRow.classList.contains("section-dropzone")) {
+        targetRow.classList.add(before ? "drop-before" : "drop-after");
+      }
+      markDropSection(targetSection);
       dropTarget = { token: targetToken, before };
     });
 
@@ -1295,11 +1442,7 @@
       if (!draggedToken || !dropTarget) return;
       event.preventDefault();
       const target = dropTarget;
-      persistLayoutMove(draggedToken, target.token, target.before).finally(() => {
-        draggedChatKey = null;
-        draggedSeparatorId = null;
-        clearDropMarkers();
-      });
+      persistLayoutMove(draggedToken, target.token, target.before).finally(finishLayoutDrag);
     });
 
     list.addEventListener("dragleave", (event) => {

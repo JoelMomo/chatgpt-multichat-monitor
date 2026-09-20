@@ -95,8 +95,9 @@
 - **Appearance controls:** choose System, Dark or Light theme and adjust monitor opacity from the popup.
 - **Smart priority order:** chats automatically move by priority: Error → Retry → Attention → Done → Pending → Working → Stopped → Draft → Idle. Manual drag order behaves as before without separators; inside separator blocks, state priority remains active.
 - **Pending:** right-click an Idle LED to mark a chat for follow-up. Pending uses a distinct pink LED, pulses much more slowly than Working, and stays marked locally until you clear it. The invisible LED hit target is larger than the visible dot for easier interaction.
-- **Section separators:** add a separator from the monitor header, drag it wherever you want, and the chats inside each resulting block continue to sort by state priority.
+- **Section separators:** add a separator from the monitor header, drag it wherever you want, and the chats inside each resulting block continue to sort by state priority. Dragging now highlights the destination section and empty sections expose a temporary **Drop here** target.
 - **Quieter counters:** Working, Done, Pending and Attention counts now use low-opacity tinted circles with the number itself in the state color.
+- **Safer layout editing:** chat/separator layout changes show a short **Undo** action. **Reset layout** removes separators and manual ordering while keeping aliases, pins, Pending and other chat preferences.
 
 <p align="center">
   <img src="assets/demos/pending.gif" width="430" alt="Real ChatGPT MultiChat Monitor UI showing a slowly pulsing Pending chat">
@@ -145,14 +146,14 @@ A normal **Done** keeps only a short late-error grace window for detection; afte
 
 - **Click** a row to switch to that conversation.
 - **Drag anywhere in the chat text area** (name or status line) to reorder or move a conversation between sections.
-- Use the **separator** icon in the header to add a divider, then drag the divider line itself to split or regroup chats. Remove it with the × control on the divider.
+- Use the **separator** icon in the header to add a divider, then drag the divider line itself to split or regroup chats. The destination section is highlighted while dragging, and empty sections show **Drop here**. Remove a divider with its × control.
 - **Right-click** a row or use **...** for:
   - Set / rename alias
   - Pin / unpin
   - Clear alias
   - Move up / Move down
   - Hide
-- **Reset chat order** returns to automatic smart sorting.
+- **Reset chat order** clears manual chat ordering. **Reset layout** also removes all separators and section assignments without clearing aliases, pins, Pending or hidden-chat preferences.
 - Automatic smart sorting prioritizes Error → Retry → Attention → Done → Pending → Working → Stopped → Draft → Idle.
 - Pinned chats stay at the top of their section, or the overall list when no separators are used.
 

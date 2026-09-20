@@ -14,6 +14,9 @@
 - Replaced the header's letter-based counters and separate alert badge with compact number circles for Working, Done, Pending and Attention; their fills are now deliberately low-opacity while the numbers keep the state color, and zero-value counters stay hidden.
 - Added persistent draggable separators. A header control creates a divider, dragging the divider changes group boundaries, and chats continue to smart-sort by state inside each section.
 - Removed the visible `⋮⋮` drag handles: the full chat text area (name + status line) is now the drag target, separator lines drag directly, and the add-separator icon is slightly smaller.
+- Improved drag feedback with destination-section highlighting and temporary **Drop here** targets for empty sections.
+- Added a short-lived **Undo** action for chat moves and separator changes.
+- Added **Reset layout** to clear separators, section assignments and manual ordering while preserving aliases, pins, Pending, hidden state and other chat preferences.
 
 ## 0.3.0 - 2026-09-19
 
