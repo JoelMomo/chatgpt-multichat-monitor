@@ -3,6 +3,7 @@
 ## Unreleased - 0.4.0
 
 - Working rows now detect visible ChatGPT work phases such as **Analizando / Analyzing**, searching and tool execution. The displayed timer remains continuous across phase changes and measures total active time for the current response; the status tooltip also exposes current-phase elapsed time.
+- Active response start/phase timestamps are now persisted per conversation and restored before page evaluation, so reloading ChatGPT or restarting the extension service worker no longer resets the active-work counter. Same-chat tab reloads preserve the running state instead of forcing it back to Idle.
 - Added persistent panel resizing from a discreet bottom-right handle, with viewport clamping and a **Reset size** control.
 - Added an **Opacity** slider in the popup, adjustable from 35% to 100% and applied live to the floating monitor.
 - Added **System**, **Dark** and **Light** themes for both the floating monitor and the extension popup.
