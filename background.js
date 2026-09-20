@@ -8,8 +8,10 @@ const SECTION_META_KEY = "monitorSectionMeta";
 const SECTION_UI_KEY = "monitorSectionUi";
 const GROUP_MODE_KEY = "monitorGroupMode";
 const HISTORY_KEY = "monitorHistory";
+const ACTIVE_RUNS_KEY = "monitorActiveRuns";
 const HISTORY_LIMIT = 100;
 const HISTORY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const ACTIVE_RUN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const UPDATE_STATE_KEY = "monitorUpdateState";
 const WHATS_NEW_KEY = "monitorWhatsNewState";
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -55,6 +57,8 @@ let sectionMeta = {};
 let sectionUi = {};
 let groupMode = GROUP_MODE_DEFAULT;
 let history = [];
+let activeRuns = {};
+let activeRunsWritePromise = Promise.resolve();
 let updateState = {
   lastAttemptAt: 0,
   checkedAt: 0,
@@ -85,6 +89,44 @@ function chatKeyFromUrl(url, tabId) {
   return "tab:" + String(tabId ?? "unknown");
 }
 
+function activeRunFor(chatKey) {
+  const run = activeRuns[chatKey];
+  if (!run || typeof run !== "object") return null;
+  const startedAt = Number(run.startedAt);
+  const updatedAt = Number(run.updatedAt);
+  if (!Number.isFinite(startedAt) || startedAt <= 0 ||
+      !Number.isFinite(updatedAt) ||
+      Date.now() - updatedAt > ACTIVE_RUN_MAX_AGE_MS) {
+    if (activeRuns[chatKey]) {
+      delete activeRuns[chatKey];
+      queueActiveRunsPersist();
+    }
+    return null;
+  }
+  return {
+    startedAt,
+    workPhase: String(run.workPhase || ""),
+    phaseStartedAt: Number.isFinite(Number(run.phaseStartedAt))
+      ? Number(run.phaseStartedAt)
+      : null,
+    updatedAt
+  };
+}
+
+function queueActiveRunsPersist() {
+  const snapshot = JSON.parse(JSON.stringify(activeRuns));
+  activeRunsWritePromise = activeRunsWritePromise
+    .catch(() => {})
+    .then(() => chrome.storage.local.set({ [ACTIVE_RUNS_KEY]: snapshot }));
+  return activeRunsWritePromise;
+}
+
+function clearActiveRun(chatKey) {
+  if (!chatKey || !activeRuns[chatKey]) return false;
+  delete activeRuns[chatKey];
+  return true;
+}
+
 async function ensureInitialized() {
   if (initPromise) return initPromise;
   initPromise = (async () => {
@@ -97,6 +139,7 @@ async function ensureInitialized() {
       [SECTION_UI_KEY]: {},
       [GROUP_MODE_KEY]: GROUP_MODE_DEFAULT,
       [HISTORY_KEY]: [],
+      [ACTIVE_RUNS_KEY]: {},
       [UPDATE_STATE_KEY]: null,
       [WHATS_NEW_KEY]: null
     });
@@ -125,6 +168,30 @@ async function ensureInitialized() {
     history = Array.isArray(stored[HISTORY_KEY])
       ? stored[HISTORY_KEY].filter((item) => Number(item.ts) >= cutoff).slice(0, HISTORY_LIMIT)
       : [];
+
+    const activeRunCutoff = Date.now() - ACTIVE_RUN_MAX_AGE_MS;
+    activeRuns = {};
+    if (stored[ACTIVE_RUNS_KEY] && typeof stored[ACTIVE_RUNS_KEY] === "object") {
+      for (const [key, value] of Object.entries(stored[ACTIVE_RUNS_KEY])) {
+        if (!key || !value || typeof value !== "object") continue;
+        const startedAt = Number(value.startedAt);
+        const updatedAt = Number(value.updatedAt);
+        if (!Number.isFinite(startedAt) || startedAt <= 0 ||
+            !Number.isFinite(updatedAt) || updatedAt < activeRunCutoff) {
+          continue;
+        }
+        activeRuns[key] = {
+          startedAt,
+          workPhase: typeof value.workPhase === "string"
+            ? value.workPhase.trim().replace(/\s+/g, " ").slice(0, 48)
+            : "",
+          phaseStartedAt: Number.isFinite(Number(value.phaseStartedAt))
+            ? Number(value.phaseStartedAt)
+            : null,
+          updatedAt
+        };
+      }
+    }
 
     const storedUpdate = stored[UPDATE_STATE_KEY];
     if (storedUpdate && typeof storedUpdate === "object") {
