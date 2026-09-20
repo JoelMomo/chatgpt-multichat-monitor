@@ -647,13 +647,24 @@
   }
 
   function persistLayoutMove(draggedToken, targetToken, before) {
-    if (activeGroupMode() === "project") return Promise.resolve(null);
+    const mode = activeGroupMode();
+    if (mode === "project") return Promise.resolve(null);
     const tokens = currentLayoutTokens().filter((token) => token !== draggedToken);
     let targetIndex = tokens.indexOf(targetToken);
     if (targetIndex < 0) return Promise.resolve(null);
     if (!before) targetIndex += 1;
     tokens.splice(targetIndex, 0, draggedToken);
-    return sendMessage({ type: "monitor-set-layout", tokens }).then((response) => {
+
+    const message = mode === "none"
+      ? {
+          type: "monitor-set-chat-order",
+          chatKeys: tokens
+            .filter((token) => token.startsWith("c:"))
+            .map((token) => token.slice(2))
+        }
+      : { type: "monitor-set-layout", tokens };
+
+    return sendMessage(message).then((response) => {
       if (response?.ok && response.undoId) {
         showLayoutUndo(draggedToken.startsWith("s:") ? "Section moved" : "Chat moved", response.undoId);
       }
