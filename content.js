@@ -2011,24 +2011,50 @@
     setupResize();
 
     list.addEventListener("dragover", (event) => {
-      const draggedToken = draggedSeparatorId
-        ? "s:" + draggedSeparatorId
-        : draggedChatKey
-          ? "c:" + draggedChatKey
-          : "";
+      if (layoutLocked()) return;
+      const draggedToken = draggedSectionToken || (draggedChatKey ? "c:" + draggedChatKey : "");
       if (!draggedToken) return;
 
-      const targetRow = event.target instanceof Element
+      const rawTarget = event.target instanceof Element
         ? event.target.closest(".chat-row, .section-separator, .section-dropzone")
         : null;
-      if (!targetRow) return;
+      if (!rawTarget) return;
+
+      if (draggedToken.startsWith("p:")) {
+        let projectId = "";
+        let visualTarget = rawTarget;
+        let before = false;
+
+        if (rawTarget.classList.contains("chat-row")) {
+          projectId = rawTarget.dataset.sectionId || "";
+          visualTarget = separatorNodes.get(projectId)?.row || rawTarget;
+          before = false;
+        } else if (rawTarget.classList.contains("project-section")) {
+          projectId = rawTarget.dataset.projectId || "";
+          const rect = rawTarget.getBoundingClientRect();
+          before = event.clientY < rect.top + rect.height / 2;
+        } else {
+          return;
+        }
+
+        const targetToken = projectId ? "p:" + projectId : "";
+        if (!targetToken || targetToken === draggedToken) return;
+
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+        clearDropMarkers();
+        visualTarget.classList.add(before ? "drop-before" : "drop-after");
+        markDropSection(projectId);
+        dropTarget = { token: targetToken, before };
+        return;
+      }
 
       let targetToken = "";
       let before = false;
       let targetSection = "";
 
-      if (targetRow.classList.contains("section-dropzone")) {
-        targetSection = targetRow.dataset.sectionId || "";
+      if (rawTarget.classList.contains("section-dropzone")) {
+        targetSection = rawTarget.dataset.sectionId || "";
         if (targetSection) {
           targetToken = "s:" + targetSection;
           before = false;
@@ -2039,15 +2065,15 @@
           before = true;
         }
       } else {
-        targetToken = layoutTokenForElement(targetRow);
-        if (!targetToken || targetToken === draggedToken) return;
-        const rect = targetRow.getBoundingClientRect();
+        targetToken = layoutTokenForElement(rawTarget);
+        if (!targetToken || targetToken === draggedToken || targetToken.startsWith("p:")) return;
+        const rect = rawTarget.getBoundingClientRect();
         before = event.clientY < rect.top + rect.height / 2;
 
-        if (targetRow.classList.contains("chat-row")) {
-          targetSection = targetRow.dataset.sectionId || "";
+        if (rawTarget.classList.contains("chat-row")) {
+          targetSection = rawTarget.dataset.sectionId || "";
         } else {
-          const separatorId = targetRow.dataset.separatorId || "";
+          const separatorId = rawTarget.dataset.separatorId || "";
           if (!before) {
             targetSection = separatorId;
           } else {
@@ -2061,29 +2087,17 @@
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
 
-      for (const node of rowNodes.values()) {
-        node.row.classList.remove("drop-before", "drop-after", "drop-section");
-      }
-      for (const node of separatorNodes.values()) {
-        node.row.classList.remove("drop-before", "drop-after", "drop-section");
-      }
-      for (const zone of sectionDropNodes.values()) {
-        zone.classList.remove("drop-section");
-      }
-
-      if (!targetRow.classList.contains("section-dropzone")) {
-        targetRow.classList.add(before ? "drop-before" : "drop-after");
+      clearDropMarkers();
+      if (!rawTarget.classList.contains("section-dropzone")) {
+        rawTarget.classList.add(before ? "drop-before" : "drop-after");
       }
       markDropSection(targetSection);
       dropTarget = { token: targetToken, before };
     });
 
     list.addEventListener("drop", (event) => {
-      const draggedToken = draggedSeparatorId
-        ? "s:" + draggedSeparatorId
-        : draggedChatKey
-          ? "c:" + draggedChatKey
-          : "";
+      if (layoutLocked()) return;
+      const draggedToken = draggedSectionToken || (draggedChatKey ? "c:" + draggedChatKey : "");
       if (!draggedToken || !dropTarget) return;
       event.preventDefault();
       const target = dropTarget;
