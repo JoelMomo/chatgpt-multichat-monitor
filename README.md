@@ -297,7 +297,7 @@ Stored data is limited to:
 - Manual separator positions, names and per-chat section assignment
 - Section collapsed/expanded state
 - Grouping mode
-- Locally detected project identifiers/names only while their tabs are open; project membership is not written to persistent chat preferences
+- Project membership/name detection stays local. Names are read from ChatGPT while tabs are open; collapsed project-section state is stored locally against the detected project identifier, not sent anywhere
 - Recent activity metadata
 - Update-check timestamps, latest known release version and dismissed-version state
 - One-time What's new acknowledgement state
