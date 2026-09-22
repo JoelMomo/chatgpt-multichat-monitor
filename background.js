@@ -881,6 +881,21 @@ function upsertState(payload, tab) {
     projectName
   };
 
+  const snapshotChanged = !hadPrevious || [
+    "windowId",
+    "chatKey",
+    "title",
+    "url",
+    "state",
+    "startedAt",
+    "finishedAt",
+    "workPhase",
+    "phaseStartedAt",
+    "projectKnown",
+    "projectKey",
+    "projectName"
+  ].some((key) => previous[key] !== next[key]);
+
   chats.set(tab.id, next);
   if (hadPrevious) {
     recordHistory(next, previous.state);
@@ -890,7 +905,7 @@ function upsertState(payload, tab) {
   }
 
   if (activeRunsChanged) queueActiveRunsPersist();
-  return activeRunsChanged;
+  return snapshotChanged;
 }
 
 async function broadcast() {
@@ -1427,7 +1442,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "monitor-state") {
     ensureInitialized()
       .then(async () => {
-        upsertState(message, sender.tab);
+        const snapshotChanged = upsertState(message, sender.tab);
 
         if (message.state === "finished" &&
             sender.tab?.active &&
@@ -1441,7 +1456,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           } catch {}
         }
 
-        await broadcast();
+        if (snapshotChanged) await broadcast();
       })
       .then(() => sendResponse({ ok: true }))
       .catch(() => sendResponse({ ok: false }));
@@ -1808,14 +1823,16 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.runtime.onStartup.addListener(() => {
   (async () => {
-    await injectIntoOpenTabs();
+    await rebuildRegistry();
+    await broadcast();
     await checkForUpdates();
   })().catch(() => {});
 });
 
 ensureInitialized()
   .then(async () => {
-    await injectIntoOpenTabs();
+    await rebuildRegistry();
+    await broadcast();
     await checkForUpdates();
   })
   .catch(() => {});

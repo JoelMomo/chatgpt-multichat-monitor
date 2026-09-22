@@ -7,7 +7,6 @@
   const ATTENTION_TTL_MS = 30 * 60 * 1000;
   const ERROR_TTL_MS = 10 * 60 * 1000;
   const FALLBACK_SCAN_MS = 5000;
-  const HEARTBEAT_MS = 30000;
   const MUTATION_THROTTLE_MS = 500;
   const ERROR_SCAN_MS = 1000;
   const LATE_ISSUE_GRACE_MS = 10000;
@@ -2525,10 +2524,6 @@
   setInterval(() => {
     if (!document.hidden) updateTimeLabels();
   }, 1000);
-
-  setInterval(() => {
-    sendCurrentState();
-  }, HEARTBEAT_MS);
 
   (async () => {
     await loadSettings();

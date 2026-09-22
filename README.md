@@ -241,6 +241,7 @@ The monitor is designed to stay open all day without continuously scanning conve
 - Live timer text updates only in visible browser tabs.
 - Working animation uses a small opacity/transform pulse and can be disabled.
 - Rows are updated in place instead of rebuilding the full overlay.
+- Cross-tab state sync is event-driven; unchanged tabs do not send periodic heartbeat snapshots, and service-worker wakes rebuild state without reinjecting the content script.
 - No continuous external polling and no telemetry.
 - Update checks are opportunistic and throttled to at most one public GitHub releases request every 24 hours.
 

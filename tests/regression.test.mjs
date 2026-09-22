@@ -149,6 +149,13 @@ test("manifest remains scoped to ChatGPT", () => {
   assert.equal("web_accessible_resources" in manifest, false);
 });
 
+test("content state sync is event-driven instead of heartbeat polling", () => {
+  assert.doesNotMatch(contentSource, /HEARTBEAT_MS/);
+  assert.doesNotMatch(contentSource, /setInterval\(\(\) => \{\s*sendCurrentState\(\)/);
+  const injections = backgroundSource.match(/await injectIntoOpenTabs\(\)/g) || [];
+  assert.equal(injections.length, 1);
+});
+
 test("content script keeps direct HTML/code execution sinks out", () => {
   assert.doesNotMatch(
     contentSource,
@@ -160,6 +167,16 @@ test("chat identity prefers conversation id and falls back to tab id", async () 
   const { api } = await loadBackground();
   assert.equal(api.chatKeyFromUrl("https://chatgpt.com/c/abc-123", 7), "conversation:abc-123");
   assert.equal(api.chatKeyFromUrl("https://chatgpt.com/", 7), "tab:7");
+});
+
+test("unchanged state refresh does not count as a snapshot change", async () => {
+  const { api } = await loadBackground();
+  const url = "https://chatgpt.com/c/dedupe";
+  const tab = { id: 60, windowId: 1, url, title: "Dedupe" };
+  const startedAt = Date.now() - 7_000;
+
+  assert.equal(api.upsertState({ state: "working", url, startedAt, updatedAt: Date.now() }, tab), true);
+  assert.equal(api.upsertState({ state: "working", url, startedAt, updatedAt: Date.now() + 30_000 }, tab), false);
 });
 
 test("Working heartbeat preserves the original run start", async () => {
