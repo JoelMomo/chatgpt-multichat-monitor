@@ -340,8 +340,8 @@ test("monitor tab activation rejects unregistered or non-ChatGPT tabs", async ()
   assert.equal(await registered.api.activateTab(chatgpt.id), true);
 });
 test("new-chat / -> /c/<id> preserves run and migrates temporary prefs", async () => {
-  const { api } = await loadBackground();
   const tab = { id: 45, windowId: 1, url: "https://chatgpt.com/", title: "New chat" };
+  const { api } = await loadBackground({ tabs: [tab] });
   const startedAt = Date.now() - 9_000;
   api.upsertState({ state: "working", url: tab.url, startedAt }, tab);
   await api.setChatPreference("tab:45", { alias: "Temporary alias", pending: true });

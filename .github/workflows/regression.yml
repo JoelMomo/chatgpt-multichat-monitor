@@ -14,6 +14,6 @@ jobs:
   regression:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Run dependency-free regression harness
         run: node --test tests/regression.test.mjs
