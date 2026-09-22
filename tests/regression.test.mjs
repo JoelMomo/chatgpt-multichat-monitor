@@ -353,5 +353,5 @@ test("new-chat / -> /c/<id> preserves run and migrates temporary prefs", async (
   assert.equal(api.getChat(tab.id).state, "working");
   assert.equal(api.activeRunForTab(tab.id, "conversation:new-id").startedAt, startedAt);
   assert.equal(api.prefsFor("conversation:new-id").alias, "Temporary alias");
-  assert.deepEqual(api.prefsFor("tab:45"), {});
+  assert.equal(Object.keys(api.prefsFor("tab:45")).length, 0);
 });
