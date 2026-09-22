@@ -146,7 +146,7 @@ function queueActiveRunsPersist() {
   const snapshot = JSON.parse(JSON.stringify(activeRuns));
   activeRunsWritePromise = activeRunsWritePromise
     .catch(() => {})
-    .then(() => chrome.storage.local.set({ [ACTIVE_RUNS_KEY]: snapshot }));
+    .then(() => chrome.storage.session.set({ [ACTIVE_RUNS_KEY]: snapshot }));
   return activeRunsWritePromise;
 }
 
@@ -161,19 +161,23 @@ function clearActiveRunForTab(tabId) {
 async function ensureInitialized() {
   if (initPromise) return initPromise;
   initPromise = (async () => {
-    const stored = await chrome.storage.local.get({
-      [PREFS_KEY]: {},
-      [ORDER_KEY]: [],
-      [PROJECT_ORDER_KEY]: [],
-      [SECTIONS_KEY]: [],
-      [SECTION_META_KEY]: {},
-      [SECTION_UI_KEY]: {},
-      [GROUP_MODE_KEY]: GROUP_MODE_DEFAULT,
-      [HISTORY_KEY]: [],
-      [ACTIVE_RUNS_KEY]: {},
-      [UPDATE_STATE_KEY]: null,
-      [WHATS_NEW_KEY]: null
-    });
+    const [stored, sessionStored] = await Promise.all([
+      chrome.storage.local.get({
+        [PREFS_KEY]: {},
+        [ORDER_KEY]: [],
+        [PROJECT_ORDER_KEY]: [],
+        [SECTIONS_KEY]: [],
+        [SECTION_META_KEY]: {},
+        [SECTION_UI_KEY]: {},
+        [GROUP_MODE_KEY]: GROUP_MODE_DEFAULT,
+        [HISTORY_KEY]: [],
+        [UPDATE_STATE_KEY]: null,
+        [WHATS_NEW_KEY]: null
+      }),
+      chrome.storage.session.get({
+        [ACTIVE_RUNS_KEY]: {}
+      })
+    ]);
     chatPrefs = stored[PREFS_KEY] && typeof stored[PREFS_KEY] === "object"
       ? stored[PREFS_KEY]
       : {};
@@ -202,8 +206,8 @@ async function ensureInitialized() {
 
     const activeRunCutoff = Date.now() - ACTIVE_RUN_MAX_AGE_MS;
     activeRuns = {};
-    if (stored[ACTIVE_RUNS_KEY] && typeof stored[ACTIVE_RUNS_KEY] === "object") {
-      for (const [key, value] of Object.entries(stored[ACTIVE_RUNS_KEY])) {
+    if (sessionStored[ACTIVE_RUNS_KEY] && typeof sessionStored[ACTIVE_RUNS_KEY] === "object") {
+      for (const [key, value] of Object.entries(sessionStored[ACTIVE_RUNS_KEY])) {
         if (!key.startsWith("tab:") || !value || typeof value !== "object") continue;
         const tabId = Number.isInteger(Number(value.tabId))
           ? Number(value.tabId)
@@ -234,6 +238,8 @@ async function ensureInitialized() {
         activeRunLastPersistedAt.set(key, updatedAt);
       }
     }
+
+    chrome.storage.local.remove(ACTIVE_RUNS_KEY).catch(() => {});
 
     const storedUpdate = stored[UPDATE_STATE_KEY];
     if (storedUpdate && typeof storedUpdate === "object") {
@@ -941,20 +947,10 @@ async function rebuildRegistry() {
     if (!Number.isInteger(tab.id)) return;
 
     if (tab.discarded) {
-      const chatKey = chatKeyFromUrl(tab.url, tab.id);
-      const run = activeRunForTab(tab.id, chatKey);
-      if (run) {
-        upsertState({
-          state: "working",
-          title: tab.title,
-          url: tab.url,
-          startedAt: run.startedAt,
-          workPhase: run.workPhase,
-          phaseStartedAt: run.phaseStartedAt
-        }, tab);
-      } else {
-        upsertState({ state: "idle", title: tab.title, url: tab.url }, tab);
+      if (clearActiveRunForTab(tab.id)) {
+        await queueActiveRunsPersist();
       }
+      upsertState({ state: "idle", title: tab.title, url: tab.url }, tab);
       return;
     }
 
@@ -1723,6 +1719,17 @@ async function handleTabUpdated(tabId, changeInfo, tab) {
 
   const nextUrl = changeInfo.url || tab.url || previous.url;
   const nextChatKey = chatKeyFromUrl(nextUrl, tabId);
+
+  if (discardedNow) {
+    if (clearActiveRunForTab(tabId)) await queueActiveRunsPersist();
+    upsertState({
+      state: "idle",
+      title: changeInfo.title || tab.title || previous.title,
+      url: nextUrl
+    }, tab);
+    await broadcast();
+    return;
+  }
 
   if (nextChatKey !== previous.chatKey) {
     const migrated = await migrateTemporaryChatIdentity(

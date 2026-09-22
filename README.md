@@ -309,6 +309,7 @@ Stored data is limited to:
 - Grouping mode and layout-lock state
 - Project membership/name detection stays local. Names are read from ChatGPT while tabs are open; collapsed project-section state is stored locally against the detected project identifier, not sent anywhere
 - Recent activity metadata
+- Session-only active response timing metadata used to restore a running timer after service-worker/page reloads; it is not kept as long-term browser storage
 - Update-check timestamps, latest known release version and dismissed-version state
 - One-time What's new acknowledgement state
 

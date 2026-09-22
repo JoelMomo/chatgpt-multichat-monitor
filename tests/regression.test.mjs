@@ -17,8 +17,9 @@ function event() {
   return { listeners, addListener(fn) { listeners.push(fn); } };
 }
 
-function chromeMock({ stored = {}, tabs = [] } = {}) {
+function chromeMock({ stored = {}, storedSession = {}, tabs = [] } = {}) {
   const storage = copy(stored);
+  const sessionStorage = copy(storedSession);
   const currentTabs = copy(tabs);
   const events = {
     runtimeMessage: event(), installed: event(), startup: event(),
@@ -33,6 +34,13 @@ function chromeMock({ stored = {}, tabs = [] } = {}) {
         async set(values) { Object.assign(storage, copy(values)); },
         async remove(keys) {
           for (const key of Array.isArray(keys) ? keys : [keys]) delete storage[key];
+        }
+      },
+      session: {
+        async get(defaults = {}) { return { ...copy(defaults), ...copy(sessionStorage) }; },
+        async set(values) { Object.assign(sessionStorage, copy(values)); },
+        async remove(keys) {
+          for (const key of Array.isArray(keys) ? keys : [keys]) delete sessionStorage[key];
         }
       },
       onChanged: events.storageChanged
@@ -78,7 +86,7 @@ function chromeMock({ stored = {}, tabs = [] } = {}) {
     }
   };
 
-  return { chrome, storage, events };
+  return { chrome, storage, sessionStorage, events };
 }
 
 async function loadBackground(options = {}) {
@@ -97,7 +105,7 @@ async function loadBackground(options = {}) {
   const exportsSource =
     "\nglobalThis.__testApi = {" +
     " ensureInitialized, upsertState, activeRunForTab, queueActiveRunsPersist, chatKeyFromUrl," +
-    " activateTab, setChatOrder, setChatPreference, prefsFor, handleTabUpdated," +
+    " activateTab, setChatOrder, setChatPreference, prefsFor, handleTabUpdated, handleTabRemoved, rebuildRegistry," +
     " getChat(tabId) { return chats.get(tabId) || null; }" +
     "};";
 
@@ -199,7 +207,7 @@ test("terminal states clear the active run", async () => {
 test("persisted run metadata survives service-worker initialization", async () => {
   const startedAt = Date.now() - 30_000;
   const { api } = await loadBackground({
-    stored: {
+    storedSession: {
       monitorActiveRuns: {
         "tab:31": {
           tabId: 31,
@@ -222,7 +230,7 @@ test("persisted run metadata survives service-worker initialization", async () =
 test("null persisted phase timestamp remains null", async () => {
   const startedAt = Date.now() - 10_000;
   const { api } = await loadBackground({
-    stored: {
+    storedSession: {
       monitorActiveRuns: {
         "tab:32": {
           tabId: 32,
@@ -327,8 +335,56 @@ test("Done duplicate tab cannot clear sibling Working run", async () => {
   assert.equal(api.activeRunForTab(tabA.id, "conversation:shared-done").startedAt, startA);
   assert.equal(api.activeRunForTab(tabB.id, "conversation:shared-done"), null);
 });
-test.todo("discarded tabs cannot refresh stale active-run TTL");
-test.todo("cold-start tab removal waits for active-run initialization");
+test("discarded tabs clear stale active runs instead of refreshing TTL", async () => {
+  const now = Date.now();
+  const tab = {
+    id: 51,
+    windowId: 1,
+    url: "https://chatgpt.com/c/discarded",
+    title: "Discarded",
+    discarded: true
+  };
+  const { api } = await loadBackground({
+    tabs: [tab],
+    storedSession: {
+      monitorActiveRuns: {
+        "tab:51": {
+          tabId: 51,
+          chatKey: "conversation:discarded",
+          startedAt: now - 60_000,
+          workPhase: "Analyzing",
+          phaseStartedAt: now - 30_000,
+          updatedAt: now - 23 * 60 * 60 * 1000
+        }
+      }
+    }
+  });
+  await api.rebuildRegistry();
+  assert.equal(api.activeRunForTab(tab.id, "conversation:discarded"), null);
+  assert.equal(api.getChat(tab.id).state, "idle");
+});
+test("tab removal initializes state before clearing its owned run", async () => {
+  const tab = { id: 52, windowId: 1, url: "https://chatgpt.com/c/remove", title: "Remove" };
+  const startedAt = Date.now() - 5_000;
+  const { api } = await loadBackground({
+    tabs: [tab],
+    storedSession: {
+      monitorActiveRuns: {
+        "tab:52": {
+          tabId: 52,
+          chatKey: "conversation:remove",
+          startedAt,
+          workPhase: "",
+          phaseStartedAt: null,
+          updatedAt: Date.now()
+        }
+      }
+    }
+  });
+  await api.handleTabRemoved(tab.id);
+  assert.equal(api.activeRunForTab(tab.id, "conversation:remove"), null);
+  assert.match(functionSource(backgroundSource, "handleTabRemoved"), /await ensureInitialized\(\)/);
+});
 test("monitor tab activation rejects unregistered or non-ChatGPT tabs", async () => {
   const external = { id: 70, windowId: 1, url: "https://example.com/", title: "External" };
   const unregistered = await loadBackground({ tabs: [external] });
