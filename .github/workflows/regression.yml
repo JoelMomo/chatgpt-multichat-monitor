@@ -1,0 +1,19 @@
+name: Regression
+
+on:
+  push:
+    branches:
+      - main
+      - dev/0.4.0-regression-harness
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run dependency-free regression harness
+        run: node --test tests/regression.test.mjs
