@@ -15,5 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Check packaged JavaScript syntax
+        run: |
+          node --check background.js
+          node --check content.js
+          node --check popup.js
+          node --check offscreen.js
       - name: Run dependency-free regression harness
         run: node --test tests/regression.test.mjs
