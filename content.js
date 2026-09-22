@@ -1065,6 +1065,12 @@
     if (floatingMenu) floatingMenu.hidden = true;
   }
 
+  function blockUntrustedEvent(event) {
+    if (event.isTrusted) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+
   function createMenuButton(label, action) {
     const button = document.createElement("button");
     button.type = "button";
@@ -1334,20 +1340,24 @@
       });
     });
 
-    main.addEventListener("click", () => activateChat(tabId));
-    main.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-      more.click();
-    });
-
-    more.addEventListener("click", (event) => {
-      event.stopPropagation();
+    const toggleMenu = () => {
       const willOpen = openMenuTabId !== tabId;
       closeMenus();
       if (willOpen && node.chat) {
         openMenuTabId = tabId;
         openFloatingMenu(more, node.chat);
       }
+    };
+
+    main.addEventListener("click", () => activateChat(tabId));
+    main.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      toggleMenu();
+    });
+
+    more.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleMenu();
     });
 
     rowNodes.set(tabId, node);
@@ -1980,7 +1990,7 @@
     host.style.cssText =
       "all:initial;position:fixed;inset:0;z-index:2147483647;pointer-events:none;";
 
-    const shadow = host.attachShadow({ mode: "open" });
+    const shadow = host.attachShadow({ mode: "closed" });
     const style = document.createElement("style");
 
     style.textContent =
@@ -2161,6 +2171,14 @@
     floatingMenu.hidden = true;
 
     shadow.append(style, panel, floatingMenu);
+    for (const eventType of [
+      "click", "contextmenu", "dblclick", "keydown",
+      "pointerdown", "pointermove", "pointerup",
+      "mousedown", "mousemove", "mouseup",
+      "dragstart", "dragover", "drop", "dragend"
+    ]) {
+      shadow.addEventListener(eventType, blockUntrustedEvent, true);
+    }
     document.documentElement.appendChild(host);
 
     const setHoverFocusActive = (active) => {

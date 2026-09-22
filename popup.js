@@ -7,6 +7,7 @@ const DEFAULTS = {
   monitorHoverFocus: false,
   monitorTheme: "dark",
   monitorGroupMode: "project",
+  monitorLayoutLocked: false,
   monitorSoundsEnabled: true,
   monitorSoundDone: "pop",
   monitorSoundRetry: "potion",
@@ -71,6 +72,14 @@ function resolvedTheme(value) {
 
 function applyPopupTheme(value) {
   document.documentElement.dataset.theme = resolvedTheme(value);
+}
+
+function refreshLayoutResetUi(locked) {
+  const disabled = locked === true;
+  for (const button of [resetPosition, resetSize, resetOrder, resetLayout]) {
+    button.disabled = disabled;
+    button.title = disabled ? "Unlock layout in the monitor first" : "";
+  }
 }
 
 function updateOpacityValue(value) {
@@ -232,6 +241,7 @@ async function load() {
   hoverFocus.checked = settings.monitorHoverFocus === true;
   applyPopupTheme(theme.value);
   animations.checked = settings.monitorAnimations !== false;
+  refreshLayoutResetUi(settings.monitorLayoutLocked === true);
 
   soundsEnabled.checked = settings.monitorSoundsEnabled !== false;
   soundDone.value = settings.monitorSoundDone || DEFAULTS.monitorSoundDone;
@@ -367,6 +377,12 @@ dismissWhatsNew.addEventListener("click", async () => {
   }).catch(() => null);
 
   if (response?.ok) renderUpdateInfo(response);
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.monitorLayoutLocked) {
+    refreshLayoutResetUi(changes.monitorLayoutLocked.newValue === true);
+  }
 });
 
 window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {

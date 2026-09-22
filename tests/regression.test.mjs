@@ -97,6 +97,7 @@ async function loadBackground(options = {}) {
   const exportsSource =
     "\nglobalThis.__testApi = {" +
     " ensureInitialized, upsertState, activeRunFor, queueActiveRunsPersist, chatKeyFromUrl," +
+    " activateTab, setChatOrder," +
     " getChat(tabId) { return chats.get(tabId) || null; }" +
     "};";
 
@@ -278,11 +279,37 @@ test("attention detector keeps common English and Spanish prompts", () => {
   assert.equal(responseNeedsAttention(), true);
 });
 
-test.todo("synthetic page events cannot trigger monitor actions");
-test.todo("layout lock is enforced by background");
+test("synthetic events are blocked at the monitor boundary", () => {
+  const blockUntrustedEvent = contentFunction("blockUntrustedEvent");
+  let prevented = false;
+  let stopped = false;
+  blockUntrustedEvent({
+    isTrusted: false,
+    preventDefault() { prevented = true; },
+    stopImmediatePropagation() { stopped = true; }
+  });
+  assert.equal(prevented, true);
+  assert.equal(stopped, true);
+  assert.match(functionSource(contentSource, "buildOverlay"), /attachShadow\(\{ mode: "closed" \}\)/);
+});
+test("layout lock is enforced by background mutations", async () => {
+  const { api } = await loadBackground({ stored: { monitorLayoutLocked: true } });
+  const result = await api.setChatOrder(["conversation:locked"]);
+  assert.equal(result.ok, false);
+  assert.equal(result.locked, true);
+});
 test.todo("Idle duplicate tab cannot clear sibling Working run");
 test.todo("Done duplicate tab cannot clear sibling Working run");
 test.todo("discarded tabs cannot refresh stale active-run TTL");
 test.todo("cold-start tab removal waits for active-run initialization");
-test.todo("monitor-activate-tab rejects unregistered or non-ChatGPT tabs");
+test("monitor tab activation rejects unregistered or non-ChatGPT tabs", async () => {
+  const external = { id: 70, windowId: 1, url: "https://example.com/", title: "External" };
+  const unregistered = await loadBackground({ tabs: [external] });
+  assert.equal(await unregistered.api.activateTab(external.id), false);
+
+  const chatgpt = { id: 71, windowId: 1, url: "https://chatgpt.com/c/allowed", title: "Allowed" };
+  const registered = await loadBackground({ tabs: [chatgpt] });
+  registered.api.upsertState({ state: "idle", url: chatgpt.url }, chatgpt);
+  assert.equal(await registered.api.activateTab(chatgpt.id), true);
+});
 test.todo("new-chat / -> /c/<id> has automated browser-level regression");

@@ -29,6 +29,7 @@
 - Added the current extension version to the normal monitor footer while keeping it hidden in Compact mode.
 - Working rows now show visible ChatGPT work phases with a continuous active-response timer. Active start/phase timestamps are persisted per conversation and restored across same-page refreshes and extension service-worker restarts; transient Draft transitions preserve the active run instead of restarting its timer.
 - Fixed visible **Pensando** phase detection for ChatGPT's shimmer status element and repaired accented Spanish attention wording.
+- Hardened the monitor boundary against synthetic page events, restricted tab activation to registered ChatGPT tabs and enforced the layout lock in background layout mutations.
 - Added a persistent open/closed **layout lock** in the monitor header. Locked mode blocks accidental drag/reorder, section editing/collapse, separator creation, panel movement and resizing while leaving normal chat actions available.
 - Done rows now show simply **Done** instead of a continuously updating “Done … ago” age.
 

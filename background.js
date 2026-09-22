@@ -7,6 +7,7 @@ const SECTIONS_KEY = "monitorSections";
 const SECTION_META_KEY = "monitorSectionMeta";
 const SECTION_UI_KEY = "monitorSectionUi";
 const GROUP_MODE_KEY = "monitorGroupMode";
+const LAYOUT_LOCK_KEY = "monitorLayoutLocked";
 const HISTORY_KEY = "monitorHistory";
 const ACTIVE_RUNS_KEY = "monitorActiveRuns";
 const HISTORY_LIMIT = 100;
@@ -396,6 +397,11 @@ async function dismissWhatsNew(version) {
     [WHATS_NEW_KEY]: whatsNewState
   });
   return true;
+}
+
+async function layoutLocked() {
+  const stored = await chrome.storage.local.get({ [LAYOUT_LOCK_KEY]: false });
+  return stored[LAYOUT_LOCK_KEY] === true;
 }
 
 function prefsFor(key) {
@@ -920,8 +926,13 @@ async function acknowledgeFinishedTab(tabId) {
 }
 
 async function activateTab(tabId) {
+  await ensureInitialized();
+  const chat = chats.get(tabId);
+  if (!chat) return false;
+
   try {
     const tab = await chrome.tabs.get(tabId);
+    if (!String(tab.url || "").startsWith("https://chatgpt.com/")) return false;
     await chrome.windows.update(tab.windowId, { focused: true });
     await chrome.tabs.update(tabId, { active: true });
     await acknowledgeFinishedTab(tabId);
@@ -934,6 +945,7 @@ async function activateTab(tabId) {
 async function setChatPreference(chatKey, patch) {
   await ensureInitialized();
   if (!chatKey || typeof patch !== "object" || patch === null) return false;
+  if (Object.prototype.hasOwnProperty.call(patch, "section") && await layoutLocked()) return false;
   const current = prefsFor(chatKey);
   const next = { ...current };
 
@@ -983,6 +995,7 @@ async function clearChatPreferenceField(field) {
 
 async function setChatOrder(keys) {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const before = captureLayoutState();
   const ordered = [...new Set(
     (Array.isArray(keys) ? keys : [])
@@ -1001,6 +1014,7 @@ async function setChatOrder(keys) {
 
 async function resetChatOrder() {
   await ensureInitialized();
+  if (await layoutLocked()) return false;
   chatOrder = [];
   await chrome.storage.local.set({ [ORDER_KEY]: [] });
   return true;
@@ -1008,6 +1022,7 @@ async function resetChatOrder() {
 
 async function setProjectOrder(keys) {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const before = captureLayoutState();
   const ordered = [...new Set(
     (Array.isArray(keys) ? keys : [])
@@ -1052,6 +1067,7 @@ function registerLayoutUndo(state) {
 
 async function restoreLayoutUndo(id) {
   await ensureInitialized();
+  if (await layoutLocked()) return false;
   const entry = layoutUndos.get(id);
   if (!entry) return false;
   clearTimeout(entry.timer);
@@ -1101,6 +1117,7 @@ async function restoreLayoutUndo(id) {
 
 async function resetLayout() {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const before = captureLayoutState();
   sections = [];
   chatOrder = [];
@@ -1133,6 +1150,7 @@ function createSeparatorId() {
 
 async function addSeparator() {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const before = captureLayoutState();
   const id = createSeparatorId();
   sections = [...sections, id].slice(0, 40);
@@ -1146,6 +1164,7 @@ async function addSeparator() {
 
 async function removeSeparator(id) {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const index = sections.indexOf(id);
   if (index < 0) return { ok: false };
   const before = captureLayoutState();
@@ -1174,6 +1193,7 @@ async function removeSeparator(id) {
 
 async function setSeparatorMeta(id, patch) {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   if (!sections.includes(id) || !patch || typeof patch !== "object") return { ok: false };
   const before = captureLayoutState();
   const current = sectionMeta[id] && typeof sectionMeta[id] === "object" ? sectionMeta[id] : {};
@@ -1192,6 +1212,7 @@ async function setSeparatorMeta(id, patch) {
 
 async function setSectionCollapsed(sectionKey, collapsed) {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const key = String(sectionKey || "").slice(0, 220);
   if (!key || (!key.startsWith("manual:") && !key.startsWith("project:"))) return { ok: false };
   const before = captureLayoutState();
@@ -1206,6 +1227,7 @@ async function setSectionCollapsed(sectionKey, collapsed) {
 
 async function moveSeparator(id, direction) {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const index = sections.indexOf(id);
   const nextIndex = index + Number(direction || 0);
   if (index < 0 || nextIndex < 0 || nextIndex >= sections.length) return { ok: false };
@@ -1220,6 +1242,7 @@ async function moveSeparator(id, direction) {
 
 async function setLayout(tokens) {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const before = captureLayoutState();
   const input = Array.isArray(tokens) ? tokens : [];
   const validSections = new Set(sections);
