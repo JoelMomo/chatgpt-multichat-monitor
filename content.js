@@ -326,6 +326,7 @@
       '[data-testid*="reason"]',
       '[data-testid*="search"]',
       '[data-testid*="tool"]',
+      ".loading-shimmer-tertiary",
       '[aria-live="polite"]',
       '[aria-live="assertive"]'
     ].join(",");
@@ -456,7 +457,7 @@
     const text = latestAssistantText();
     if (!text) return false;
     if (/\?\s*$/.test(text)) return true;
-    return /(would you like me to|do you want me to|shall i|want me to|quieres que|te gustaria que|te gustarÃƒÂ­a que|prefieres que|debo hacerlo)/i.test(text);
+    return /(would you like me to|do you want me to|shall i|want me to|quieres que|te gustaria que|te gustaría que|prefieres que|debo hacerlo)/i.test(text);
   }
 
   function clearFinishTimer() {
@@ -781,7 +782,9 @@
       startedAt: Number(run.startedAt),
       finishedAt: null,
       workPhase: String(run.workPhase || ""),
-      phaseStartedAt: Number.isFinite(Number(run.phaseStartedAt))
+      phaseStartedAt: run.phaseStartedAt != null &&
+        Number.isFinite(Number(run.phaseStartedAt)) &&
+        Number(run.phaseStartedAt) > 0
         ? Number(run.phaseStartedAt)
         : null,
       updatedAt: Date.now()

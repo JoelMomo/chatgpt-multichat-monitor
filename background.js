@@ -108,7 +108,9 @@ function activeRunFor(chatKey) {
   return {
     startedAt,
     workPhase: String(run.workPhase || ""),
-    phaseStartedAt: Number.isFinite(Number(run.phaseStartedAt))
+    phaseStartedAt: run.phaseStartedAt != null &&
+      Number.isFinite(Number(run.phaseStartedAt)) &&
+      Number(run.phaseStartedAt) > 0
       ? Number(run.phaseStartedAt)
       : null,
     updatedAt
@@ -188,7 +190,9 @@ async function ensureInitialized() {
           workPhase: typeof value.workPhase === "string"
             ? value.workPhase.trim().replace(/\s+/g, " ").slice(0, 48)
             : "",
-          phaseStartedAt: Number.isFinite(Number(value.phaseStartedAt))
+          phaseStartedAt: value.phaseStartedAt != null &&
+            Number.isFinite(Number(value.phaseStartedAt)) &&
+            Number(value.phaseStartedAt) > 0
             ? Number(value.phaseStartedAt)
             : null,
           updatedAt

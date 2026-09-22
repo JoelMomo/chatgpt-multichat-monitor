@@ -215,12 +215,54 @@ test("persisted run metadata survives service-worker initialization", async () =
   assert.equal(run.phaseStartedAt, startedAt + 5_000);
 });
 
+
+test("null persisted phase timestamp remains null", async () => {
+  const startedAt = Date.now() - 10_000;
+  const { api } = await loadBackground({
+    stored: {
+      monitorActiveRuns: {
+        "conversation:null-phase": {
+          startedAt,
+          workPhase: "",
+          phaseStartedAt: null,
+          updatedAt: Date.now()
+        }
+      }
+    }
+  });
+  assert.equal(api.activeRunFor("conversation:null-phase").phaseStartedAt, null);
+});
+
 test("phase classifier recognizes known visible labels", () => {
   const normalizeWorkPhaseText = contentFunction("normalizeWorkPhaseText");
   const classifyWorkPhaseText = contentFunction("classifyWorkPhaseText", { normalizeWorkPhaseText });
   assert.equal(classifyWorkPhaseText("Pensando"), "Analizando");
   assert.equal(classifyWorkPhaseText("Searching"), "Searching");
   assert.equal(classifyWorkPhaseText("Using tools"), "Executing");
+});
+
+
+test("phase detector sees ChatGPT Pensando shimmer span", () => {
+  const normalizeWorkPhaseText = contentFunction("normalizeWorkPhaseText");
+  const classifyWorkPhaseText = contentFunction("classifyWorkPhaseText", { normalizeWorkPhaseText });
+  const span = {
+    textContent: "Pensando",
+    getAttribute() { return null; }
+  };
+  const latestTurn = {
+    querySelectorAll(selector) {
+      return selector.includes(".loading-shimmer-tertiary") ? [span] : [];
+    }
+  };
+  const document = {
+    querySelectorAll() { return [latestTurn]; }
+  };
+  const detectWorkPhase = contentFunction("detectWorkPhase", {
+    document,
+    isVisible: () => true,
+    classifyWorkPhaseText
+  });
+  assert.equal(detectWorkPhase(), "Analizando");
 });
 
 test("attention detector keeps common English and Spanish prompts", () => {
@@ -232,10 +274,10 @@ test("attention detector keeps common English and Spanish prompts", () => {
   assert.equal(responseNeedsAttention(), true);
   text = "Would you like me to continue?";
   assert.equal(responseNeedsAttention(), true);
+  text = "¿Te gustaría que lo haga?";
+  assert.equal(responseNeedsAttention(), true);
 });
 
-test.todo("phase candidates include ChatGPT loading-shimmer-tertiary Pensando span");
-test.todo("accented Spanish '¿Te gustaría que...?' is detected as Needs attention");
 test.todo("synthetic page events cannot trigger monitor actions");
 test.todo("layout lock is enforced by background");
 test.todo("Idle duplicate tab cannot clear sibling Working run");
