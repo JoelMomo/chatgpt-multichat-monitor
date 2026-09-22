@@ -17,10 +17,11 @@ function event() {
   return { listeners, addListener(fn) { listeners.push(fn); } };
 }
 
-function chromeMock({ stored = {}, storedSession = {}, tabs = [] } = {}) {
+function chromeMock({ stored = {}, storedSession = {}, tabs = [], offscreenCreateGate = null } = {}) {
   const storage = copy(stored);
   const sessionStorage = copy(storedSession);
   const currentTabs = copy(tabs);
+  const offscreenState = { exists: false, createCount: 0 };
   const events = {
     runtimeMessage: event(), installed: event(), startup: event(),
     storageChanged: event(), command: event(), activated: event(),
@@ -80,13 +81,17 @@ function chromeMock({ stored = {}, storedSession = {}, tabs = [] } = {}) {
     },
     scripting: { async executeScript() {} },
     offscreen: {
-      async hasDocument() { return false; },
-      async createDocument() {},
-      async closeDocument() {}
+      async hasDocument() { return offscreenState.exists; },
+      async createDocument() {
+        offscreenState.createCount += 1;
+        if (offscreenCreateGate) await offscreenCreateGate;
+        offscreenState.exists = true;
+      },
+      async closeDocument() { offscreenState.exists = false; }
     }
   };
 
-  return { chrome, storage, sessionStorage, events };
+  return { chrome, storage, sessionStorage, events, offscreenState };
 }
 
 async function loadBackground(options = {}) {
@@ -105,7 +110,7 @@ async function loadBackground(options = {}) {
   const exportsSource =
     "\nglobalThis.__testApi = {" +
     " ensureInitialized, upsertState, activeRunForTab, queueActiveRunsPersist, chatKeyFromUrl," +
-    " activateTab, setChatOrder, setChatPreference, prefsFor, handleTabUpdated, handleTabRemoved, rebuildRegistry," +
+    " activateTab, setChatOrder, setChatPreference, prefsFor, handleTabUpdated, handleTabRemoved, rebuildRegistry, ensureOffscreen," +
     " getChat(tabId) { return chats.get(tabId) || null; }" +
     "};";
 
@@ -149,6 +154,22 @@ test("manifest remains scoped to ChatGPT", () => {
   assert.equal("web_accessible_resources" in manifest, false);
 });
 
+test("concurrent sound requests share one offscreen creation", async () => {
+  let releaseCreate;
+  const gate = new Promise((resolve) => { releaseCreate = resolve; });
+  const { api, offscreenState } = await loadBackground({ offscreenCreateGate: gate });
+
+  const first = api.ensureOffscreen();
+  const second = api.ensureOffscreen();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(offscreenState.createCount, 1);
+  releaseCreate();
+  await Promise.all([first, second]);
+  assert.equal(offscreenState.exists, true);
+});
+
 test("content state sync is event-driven instead of heartbeat polling", () => {
   assert.doesNotMatch(contentSource, /HEARTBEAT_MS/);
   assert.doesNotMatch(contentSource, /setInterval\(\(\) => \{\s*sendCurrentState\(\)/);
@@ -161,6 +182,22 @@ test("content script keeps direct HTML/code execution sinks out", () => {
     contentSource,
     /\b(?:innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval)\b|new\s+Function\s*\(/
   );
+});
+
+test("registry rebuild prunes orphan temporary tab preferences", async () => {
+  const { api } = await loadBackground({
+    stored: {
+      monitorChatPrefs: {
+        "tab:999": { alias: "Orphan" },
+        "conversation:keep": { alias: "Keep" }
+      },
+      monitorChatOrder: ["tab:999", "conversation:keep"]
+    },
+    tabs: []
+  });
+  await api.rebuildRegistry();
+  assert.equal(Object.keys(api.prefsFor("tab:999")).length, 0);
+  assert.equal(api.prefsFor("conversation:keep").alias, "Keep");
 });
 
 test("chat identity prefers conversation id and falls back to tab id", async () => {
@@ -306,6 +343,12 @@ test("attention detector keeps common English and Spanish prompts", () => {
   assert.equal(responseNeedsAttention(), true);
   text = "¿Te gustaría que lo haga?";
   assert.equal(responseNeedsAttention(), true);
+});
+
+test("drag payloads do not expose chat or section identifiers", () => {
+  const setDataCalls = contentSource.match(/setData\("text\/plain", "monitor-layout-drag"\)/g) || [];
+  assert.equal(setDataCalls.length, 2);
+  assert.doesNotMatch(contentSource, /setData\("text\/plain", dragged(?:ChatKey|SectionToken)\)/);
 });
 
 test("synthetic events are blocked at the monitor boundary", () => {

@@ -73,6 +73,7 @@ let whatsNewState = null;
 let initPromise = null;
 let updateCheckPromise = null;
 let lastAudioRequestAt = 0;
+let offscreenCreatePromise = null;
 const pendingDoneSoundTimers = new Map();
 const layoutUndos = new Map();
 
@@ -238,8 +239,6 @@ async function ensureInitialized() {
         activeRunLastPersistedAt.set(key, updatedAt);
       }
     }
-
-    chrome.storage.local.remove(ACTIVE_RUNS_KEY).catch(() => {});
 
     const storedUpdate = stored[UPDATE_STATE_KEY];
     if (storedUpdate && typeof storedUpdate === "object") {
@@ -612,7 +611,6 @@ function recordHistory(chat, previousState) {
       chat.state === "draft") return;
   history.unshift({
     ts: Date.now(),
-    chatKey: chat.chatKey,
     title: decorate(chat).displayTitle,
     state: chat.state
   });
@@ -650,13 +648,24 @@ async function ensureOffscreen() {
     exists = contexts.length > 0;
   }
 
-  if (!exists) {
-    await chrome.offscreen.createDocument({
+  if (!exists && !offscreenCreatePromise) {
+    offscreenCreatePromise = chrome.offscreen.createDocument({
       url: "offscreen.html",
       reasons: ["AUDIO_PLAYBACK"],
       justification: "Play a local sound when a monitored ChatGPT state changes."
+    }).catch(async (error) => {
+      const nowExists = chrome.offscreen.hasDocument
+        ? await chrome.offscreen.hasDocument()
+        : (await chrome.runtime.getContexts({
+            contextTypes: ["OFFSCREEN_DOCUMENT"]
+          })).length > 0;
+      if (!nowExists) throw error;
+    }).finally(() => {
+      offscreenCreatePromise = null;
     });
   }
+
+  if (offscreenCreatePromise) await offscreenCreatePromise;
 }
 
 async function playSound(sound, volume) {
@@ -945,6 +954,31 @@ async function rebuildRegistry() {
       cancelPendingDoneSound(tabId);
       chats.delete(tabId);
     }
+  }
+
+  let transientPrefsChanged = false;
+  for (const key of Object.keys(chatPrefs)) {
+    const match = key.match(/^tab:(\d+)$/);
+    if (match && !openIds.has(Number(match[1]))) {
+      delete chatPrefs[key];
+      transientPrefsChanged = true;
+    }
+  }
+
+  const filteredOrder = chatOrder.filter((key) => {
+    const match = key.match(/^tab:(\d+)$/);
+    return !match || openIds.has(Number(match[1]));
+  });
+  if (filteredOrder.length !== chatOrder.length) {
+    chatOrder = filteredOrder;
+    transientPrefsChanged = true;
+  }
+
+  if (transientPrefsChanged) {
+    await chrome.storage.local.set({
+      [PREFS_KEY]: chatPrefs,
+      [ORDER_KEY]: chatOrder
+    });
   }
 
   let prunedActiveRun = false;
@@ -1815,7 +1849,7 @@ chrome.runtime.onInstalled.addListener((details) => {
       }
     }
 
-    await chrome.storage.local.remove("monitorDoneVisibilityMs");
+    await chrome.storage.local.remove(["monitorDoneVisibilityMs", ACTIVE_RUNS_KEY]);
     await injectIntoOpenTabs();
     await checkForUpdates();
   })().catch(() => {});
@@ -1824,7 +1858,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 chrome.runtime.onStartup.addListener(() => {
   (async () => {
     await rebuildRegistry();
-    await broadcast();
+    await updateBadge();
     await checkForUpdates();
   })().catch(() => {});
 });
@@ -1832,7 +1866,7 @@ chrome.runtime.onStartup.addListener(() => {
 ensureInitialized()
   .then(async () => {
     await rebuildRegistry();
-    await broadcast();
+    await updateBadge();
     await checkForUpdates();
   })
   .catch(() => {});

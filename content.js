@@ -1185,7 +1185,7 @@
       closeMenus();
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", draggedSectionToken);
+        event.dataTransfer.setData("text/plain", "monitor-layout-drag");
       }
     });
 
@@ -1324,7 +1324,7 @@
 
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", draggedChatKey);
+        event.dataTransfer.setData("text/plain", "monitor-layout-drag");
       }
     });
 

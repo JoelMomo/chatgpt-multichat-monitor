@@ -33,6 +33,7 @@
 - Active runs are now owned by browser tab instead of conversation ID, preventing duplicate instances of the same conversation from clearing or inheriting each other's timers. Temporary new-chat identity is promoted to the assigned conversation ID without resetting the run, and local temporary preferences migrate with it.
 - Active-run timing moved to extension session storage instead of long-term local storage. Discarded tabs now drop unverifiable Working runs instead of refreshing stale timers indefinitely.
 - Removed periodic state heartbeats and redundant content-script reinjection on ordinary service-worker wakes. Unchanged state updates no longer broadcast a full snapshot to every ChatGPT tab.
+- Serialized offscreen-audio creation so simultaneous alerts share one document, pruned orphan temporary tab preferences and stopped exposing internal chat/section identifiers through drag payloads.
 - Added a persistent open/closed **layout lock** in the monitor header. Locked mode blocks accidental drag/reorder, section editing/collapse, separator creation, panel movement and resizing while leaving normal chat actions available.
 - Done rows now show simply **Done** instead of a continuously updating “Done … ago” age.
 
