@@ -92,21 +92,45 @@ function chatKeyFromUrl(url, tabId) {
   return "tab:" + String(tabId ?? "unknown");
 }
 
-function activeRunFor(chatKey) {
-  const run = activeRuns[chatKey];
+function activeRunKey(tabId) {
+  return "tab:" + String(tabId ?? "unknown");
+}
+
+function activeRunForTab(tabId, chatKey = "") {
+  const key = activeRunKey(tabId);
+  const run = activeRuns[key];
   if (!run || typeof run !== "object") return null;
+
   const startedAt = Number(run.startedAt);
   const updatedAt = Number(run.updatedAt);
   if (!Number.isFinite(startedAt) || startedAt <= 0 ||
       !Number.isFinite(updatedAt) ||
       Date.now() - updatedAt > ACTIVE_RUN_MAX_AGE_MS) {
-    if (activeRuns[chatKey]) {
-      delete activeRuns[chatKey];
-      queueActiveRunsPersist();
-    }
+    delete activeRuns[key];
+    activeRunLastPersistedAt.delete(key);
+    queueActiveRunsPersist();
     return null;
   }
+
+  let runChatKey = typeof run.chatKey === "string" && run.chatKey
+    ? run.chatKey
+    : key;
+
+  if (chatKey && runChatKey !== chatKey) {
+    const canPromoteTemporaryIdentity =
+      runChatKey === key &&
+      chatKey.startsWith("conversation:");
+
+    if (!canPromoteTemporaryIdentity) return null;
+
+    runChatKey = chatKey;
+    run.chatKey = chatKey;
+    queueActiveRunsPersist();
+  }
+
   return {
+    tabId: Number.isInteger(Number(run.tabId)) ? Number(run.tabId) : Number(tabId),
+    chatKey: runChatKey,
     startedAt,
     workPhase: String(run.workPhase || ""),
     phaseStartedAt: run.phaseStartedAt != null &&
@@ -126,10 +150,11 @@ function queueActiveRunsPersist() {
   return activeRunsWritePromise;
 }
 
-function clearActiveRun(chatKey) {
-  if (!chatKey || !activeRuns[chatKey]) return false;
-  delete activeRuns[chatKey];
-  activeRunLastPersistedAt.delete(chatKey);
+function clearActiveRunForTab(tabId) {
+  const key = activeRunKey(tabId);
+  if (!activeRuns[key]) return false;
+  delete activeRuns[key];
+  activeRunLastPersistedAt.delete(key);
   return true;
 }
 
@@ -179,14 +204,22 @@ async function ensureInitialized() {
     activeRuns = {};
     if (stored[ACTIVE_RUNS_KEY] && typeof stored[ACTIVE_RUNS_KEY] === "object") {
       for (const [key, value] of Object.entries(stored[ACTIVE_RUNS_KEY])) {
-        if (!key || !value || typeof value !== "object") continue;
+        if (!key.startsWith("tab:") || !value || typeof value !== "object") continue;
+        const tabId = Number.isInteger(Number(value.tabId))
+          ? Number(value.tabId)
+          : Number(key.slice(4));
         const startedAt = Number(value.startedAt);
         const updatedAt = Number(value.updatedAt);
-        if (!Number.isFinite(startedAt) || startedAt <= 0 ||
+        if (!Number.isInteger(tabId) ||
+            !Number.isFinite(startedAt) || startedAt <= 0 ||
             !Number.isFinite(updatedAt) || updatedAt < activeRunCutoff) {
           continue;
         }
         activeRuns[key] = {
+          tabId,
+          chatKey: typeof value.chatKey === "string" && value.chatKey
+            ? value.chatKey
+            : key,
           startedAt,
           workPhase: typeof value.workPhase === "string"
             ? value.workPhase.trim().replace(/\s+/g, " ").slice(0, 48)
@@ -402,6 +435,38 @@ async function dismissWhatsNew(version) {
 async function layoutLocked() {
   const stored = await chrome.storage.local.get({ [LAYOUT_LOCK_KEY]: false });
   return stored[LAYOUT_LOCK_KEY] === true;
+}
+
+async function migrateTemporaryChatIdentity(tabId, oldKey, newKey) {
+  const temporaryKey = activeRunKey(tabId);
+  if (oldKey !== temporaryKey || !newKey.startsWith("conversation:")) return false;
+
+  let localChanged = false;
+  const oldPrefs = chatPrefs[oldKey];
+  if (oldPrefs && typeof oldPrefs === "object") {
+    chatPrefs[newKey] = { ...oldPrefs, ...prefsFor(newKey) };
+    delete chatPrefs[oldKey];
+    localChanged = true;
+  }
+
+  if (chatOrder.includes(oldKey)) {
+    chatOrder = [...new Set(chatOrder.map((key) => key === oldKey ? newKey : key))].slice(0, 200);
+    localChanged = true;
+  }
+
+  const run = activeRuns[temporaryKey];
+  if (run && typeof run === "object") {
+    run.chatKey = newKey;
+    queueActiveRunsPersist();
+  }
+
+  if (localChanged) {
+    await chrome.storage.local.set({
+      [PREFS_KEY]: chatPrefs,
+      [ORDER_KEY]: chatOrder
+    });
+  }
+  return true;
 }
 
 function prefsFor(key) {
@@ -700,7 +765,8 @@ function upsertState(payload, tab) {
   const state = payload.state || "idle";
   const chatKey = chatKeyFromUrl(payload.url || tab.url, tab.id);
   const sameChat = previous.chatKey === chatKey;
-  const persistedRun = activeRunFor(chatKey);
+  const runKey = activeRunKey(tab.id);
+  const persistedRun = activeRunForTab(tab.id, chatKey);
   let activeRunsChanged = false;
 
   const payloadStartedAt = Number(payload.startedAt);
@@ -746,25 +812,27 @@ function upsertState(payload, tab) {
     }
 
     const nextRun = {
+      tabId: tab.id,
+      chatKey,
       startedAt,
       workPhase,
       phaseStartedAt,
       updatedAt: now
     };
-    const currentRun = activeRuns[chatKey];
+    const currentRun = activeRuns[runKey];
     const runFieldsChanged = !currentRun ||
       currentRun.startedAt !== nextRun.startedAt ||
       currentRun.workPhase !== nextRun.workPhase ||
       currentRun.phaseStartedAt !== nextRun.phaseStartedAt;
-    const persistenceDue = now - (activeRunLastPersistedAt.get(chatKey) || 0) >= ACTIVE_RUN_PERSIST_INTERVAL_MS;
+    const persistenceDue = now - (activeRunLastPersistedAt.get(runKey) || 0) >= ACTIVE_RUN_PERSIST_INTERVAL_MS;
 
-    activeRuns[chatKey] = nextRun;
+    activeRuns[runKey] = nextRun;
     if (runFieldsChanged || persistenceDue) {
-      activeRunLastPersistedAt.set(chatKey, now);
+      activeRunLastPersistedAt.set(runKey, now);
       activeRunsChanged = true;
     }
   } else {
-    if (state !== "draft" && clearActiveRun(chatKey)) activeRunsChanged = true;
+    if (state !== "draft" && clearActiveRunForTab(tab.id)) activeRunsChanged = true;
     workPhase = "";
     phaseStartedAt = null;
 
@@ -858,12 +926,23 @@ async function rebuildRegistry() {
     }
   }
 
+  let prunedActiveRun = false;
+  for (const [key, run] of Object.entries(activeRuns)) {
+    const ownerTabId = Number(run?.tabId ?? key.slice(4));
+    if (!openIds.has(ownerTabId)) {
+      delete activeRuns[key];
+      activeRunLastPersistedAt.delete(key);
+      prunedActiveRun = true;
+    }
+  }
+  if (prunedActiveRun) queueActiveRunsPersist();
+
   await Promise.allSettled(tabs.map(async (tab) => {
     if (!Number.isInteger(tab.id)) return;
 
     if (tab.discarded) {
       const chatKey = chatKeyFromUrl(tab.url, tab.id);
-      const run = activeRunFor(chatKey);
+      const run = activeRunForTab(tab.id, chatKey);
       if (run) {
         upsertState({
           state: "working",
@@ -885,7 +964,7 @@ async function rebuildRegistry() {
     } catch {
       if (!chats.has(tab.id)) {
         const chatKey = chatKeyFromUrl(tab.url, tab.id);
-        const run = activeRunFor(chatKey);
+        const run = activeRunForTab(tab.id, chatKey);
         if (run) {
           upsertState({
             state: "working",
@@ -1376,8 +1455,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "monitor-get-active-run") {
     ensureInitialized()
       .then(() => {
-        const chatKey = chatKeyFromUrl(message.url || sender.tab?.url || "", sender.tab?.id);
-        sendResponse({ ok: true, chatKey, run: activeRunFor(chatKey) });
+        const tabId = sender.tab?.id;
+        const chatKey = chatKeyFromUrl(message.url || sender.tab?.url || "", tabId);
+        sendResponse({ ok: true, chatKey, run: Number.isInteger(tabId) ? activeRunForTab(tabId, chatKey) : null });
       })
       .catch(() => sendResponse({ ok: false, run: null }));
     return true;
@@ -1607,24 +1687,21 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
     .catch(() => {});
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => {
+async function handleTabRemoved(tabId) {
+  await ensureInitialized();
   cancelPendingDoneSound(tabId);
-  const removed = chats.get(tabId);
-  if (!chats.delete(tabId)) return;
+  const hadChat = chats.delete(tabId);
+  const hadRun = clearActiveRunForTab(tabId);
+  if (hadRun) await queueActiveRunsPersist();
+  if (hadChat || hadRun) await broadcast();
+}
 
-  if (removed?.chatKey) {
-    const stillOpen = [...chats.values()].some((chat) =>
-      chat.chatKey === removed.chatKey && chat.state === "working"
-    );
-    if (!stillOpen && clearActiveRun(removed.chatKey)) {
-      queueActiveRunsPersist().catch(() => {});
-    }
-  }
-
-  broadcast().catch(() => {});
+chrome.tabs.onRemoved.addListener((tabId) => {
+  handleTabRemoved(tabId).catch(() => {});
 });
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+async function handleTabUpdated(tabId, changeInfo, tab) {
+  await ensureInitialized();
   const isLoading = changeInfo.status === "loading";
   const discardedNow = changeInfo.discarded === true;
 
@@ -1634,26 +1711,42 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
   if (changeInfo.url && !changeInfo.url.startsWith("https://chatgpt.com/")) {
     cancelPendingDoneSound(tabId);
-    if (chats.delete(tabId)) broadcast().catch(() => {});
+    const hadChat = chats.delete(tabId);
+    const hadRun = clearActiveRunForTab(tabId);
+    if (hadRun) await queueActiveRunsPersist();
+    if (hadChat || hadRun) await broadcast();
     return;
   }
 
   const previous = chats.get(tabId);
   if (!previous) return;
 
-  if (discardedNow || isLoading) {
-    const nextUrl = changeInfo.url || tab.url || previous.url;
-    const nextChatKey = chatKeyFromUrl(nextUrl, tabId);
+  const nextUrl = changeInfo.url || tab.url || previous.url;
+  const nextChatKey = chatKeyFromUrl(nextUrl, tabId);
 
-    if (nextChatKey === previous.chatKey) {
+  if (nextChatKey !== previous.chatKey) {
+    const migrated = await migrateTemporaryChatIdentity(
+      tabId,
+      previous.chatKey,
+      nextChatKey
+    );
+
+    if (migrated) {
+      const run = activeRuns[activeRunKey(tabId)];
+      if (run) {
+        run.chatKey = nextChatKey;
+        await queueActiveRunsPersist();
+      }
       chats.set(tabId, {
         ...previous,
+        chatKey: nextChatKey,
         windowId: tab.windowId,
         title: cleanTitle(changeInfo.title || tab.title || previous.title),
-        url: nextUrl
+        url: nextUrl,
+        updatedAt: Date.now()
       });
     } else {
-      if (clearActiveRun(previous.chatKey)) queueActiveRunsPersist().catch(() => {});
+      if (clearActiveRunForTab(tabId)) await queueActiveRunsPersist();
       upsertState({
         state: "idle",
         title: changeInfo.title || tab.title || previous.title,
@@ -1661,19 +1754,22 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       }, tab);
     }
 
-    broadcast().catch(() => {});
+    await broadcast();
     return;
   }
 
-  const nextUrl = changeInfo.url || tab.url || previous.url;
   chats.set(tabId, {
     ...previous,
-    chatKey: chatKeyFromUrl(nextUrl, tabId),
+    windowId: tab.windowId,
     title: cleanTitle(changeInfo.title || tab.title || previous.title),
     url: nextUrl,
-    updatedAt: Date.now()
+    updatedAt: isLoading || discardedNow ? previous.updatedAt : Date.now()
   });
-  broadcast().catch(() => {});
+  await broadcast();
+}
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  handleTabUpdated(tabId, changeInfo, tab).catch(() => {});
 });
 
 chrome.runtime.onInstalled.addListener((details) => {

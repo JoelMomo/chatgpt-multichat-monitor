@@ -30,6 +30,7 @@
 - Working rows now show visible ChatGPT work phases with a continuous active-response timer. Active start/phase timestamps are persisted per conversation and restored across same-page refreshes and extension service-worker restarts; transient Draft transitions preserve the active run instead of restarting its timer.
 - Fixed visible **Pensando** phase detection for ChatGPT's shimmer status element and repaired accented Spanish attention wording.
 - Hardened the monitor boundary against synthetic page events, restricted tab activation to registered ChatGPT tabs and enforced the layout lock in background layout mutations.
+- Active runs are now owned by browser tab instead of conversation ID, preventing duplicate instances of the same conversation from clearing or inheriting each other's timers. Temporary new-chat identity is promoted to the assigned conversation ID without resetting the run, and local temporary preferences migrate with it.
 - Added a persistent open/closed **layout lock** in the monitor header. Locked mode blocks accidental drag/reorder, section editing/collapse, separator creation, panel movement and resizing while leaving normal chat actions available.
 - Done rows now show simply **Done** instead of a continuously updating “Done … ago” age.
 

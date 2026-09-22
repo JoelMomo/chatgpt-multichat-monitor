@@ -96,8 +96,8 @@ async function loadBackground(options = {}) {
 
   const exportsSource =
     "\nglobalThis.__testApi = {" +
-    " ensureInitialized, upsertState, activeRunFor, queueActiveRunsPersist, chatKeyFromUrl," +
-    " activateTab, setChatOrder," +
+    " ensureInitialized, upsertState, activeRunForTab, queueActiveRunsPersist, chatKeyFromUrl," +
+    " activateTab, setChatOrder, setChatPreference, prefsFor, handleTabUpdated," +
     " getChat(tabId) { return chats.get(tabId) || null; }" +
     "};";
 
@@ -161,7 +161,7 @@ test("Working heartbeat preserves the original run start", async () => {
   const startedAt = Date.now() - 20_000;
   api.upsertState({ state: "working", url, startedAt }, tab);
   api.upsertState({ state: "working", url, startedAt: Date.now() }, tab);
-  assert.equal(api.activeRunFor("conversation:working").startedAt, startedAt);
+  assert.equal(api.activeRunForTab(tab.id, "conversation:working").startedAt, startedAt);
 });
 
 test("Draft preserves the active run", async () => {
@@ -171,7 +171,7 @@ test("Draft preserves the active run", async () => {
   const startedAt = Date.now() - 15_000;
   api.upsertState({ state: "working", url, startedAt }, tab);
   api.upsertState({ state: "draft", url }, tab);
-  assert.equal(api.activeRunFor("conversation:draft").startedAt, startedAt);
+  assert.equal(api.activeRunForTab(tab.id, "conversation:draft").startedAt, startedAt);
   assert.equal(api.getChat(tab.id).startedAt, startedAt);
 });
 
@@ -181,7 +181,7 @@ test("Idle clears the active run", async () => {
   const tab = { id: 13, windowId: 1, url, title: "Regression" };
   api.upsertState({ state: "working", url, startedAt: Date.now() - 5_000 }, tab);
   api.upsertState({ state: "idle", url }, tab);
-  assert.equal(api.activeRunFor("conversation:idle"), null);
+  assert.equal(api.activeRunForTab(tab.id, "conversation:idle"), null);
   assert.equal(api.getChat(tab.id).startedAt, null);
 });
 
@@ -192,7 +192,7 @@ test("terminal states clear the active run", async () => {
     const tab = { id: 20, windowId: 1, url, title: "Regression" };
     api.upsertState({ state: "working", url, startedAt: Date.now() - 5_000 }, tab);
     api.upsertState({ state, url }, tab);
-    assert.equal(api.activeRunFor("conversation:" + state), null, state);
+    assert.equal(api.activeRunForTab(tab.id, "conversation:" + state), null, state);
   }
 });
 
@@ -201,7 +201,9 @@ test("persisted run metadata survives service-worker initialization", async () =
   const { api } = await loadBackground({
     stored: {
       monitorActiveRuns: {
-        "conversation:restart": {
+        "tab:31": {
+          tabId: 31,
+          chatKey: "conversation:restart",
           startedAt,
           workPhase: "Analyzing",
           phaseStartedAt: startedAt + 5_000,
@@ -210,7 +212,7 @@ test("persisted run metadata survives service-worker initialization", async () =
       }
     }
   });
-  const run = api.activeRunFor("conversation:restart");
+  const run = api.activeRunForTab(31, "conversation:restart");
   assert.equal(run.startedAt, startedAt);
   assert.equal(run.workPhase, "Analyzing");
   assert.equal(run.phaseStartedAt, startedAt + 5_000);
@@ -222,7 +224,9 @@ test("null persisted phase timestamp remains null", async () => {
   const { api } = await loadBackground({
     stored: {
       monitorActiveRuns: {
-        "conversation:null-phase": {
+        "tab:32": {
+          tabId: 32,
+          chatKey: "conversation:null-phase",
           startedAt,
           workPhase: "",
           phaseStartedAt: null,
@@ -231,7 +235,7 @@ test("null persisted phase timestamp remains null", async () => {
       }
     }
   });
-  assert.equal(api.activeRunFor("conversation:null-phase").phaseStartedAt, null);
+  assert.equal(api.activeRunForTab(32, "conversation:null-phase").phaseStartedAt, null);
 });
 
 test("phase classifier recognizes known visible labels", () => {
@@ -298,8 +302,31 @@ test("layout lock is enforced by background mutations", async () => {
   assert.equal(result.ok, false);
   assert.equal(result.locked, true);
 });
-test.todo("Idle duplicate tab cannot clear sibling Working run");
-test.todo("Done duplicate tab cannot clear sibling Working run");
+test("Idle duplicate tab cannot clear sibling Working run", async () => {
+  const { api } = await loadBackground();
+  const url = "https://chatgpt.com/c/shared-idle";
+  const workingTab = { id: 41, windowId: 1, url, title: "Working" };
+  const idleTab = { id: 42, windowId: 1, url, title: "Idle" };
+  const startedAt = Date.now() - 8_000;
+  api.upsertState({ state: "working", url, startedAt }, workingTab);
+  api.upsertState({ state: "idle", url }, idleTab);
+  assert.equal(api.activeRunForTab(workingTab.id, "conversation:shared-idle").startedAt, startedAt);
+});
+test("Done duplicate tab cannot clear sibling Working run", async () => {
+  const { api } = await loadBackground();
+  const url = "https://chatgpt.com/c/shared-done";
+  const tabA = { id: 43, windowId: 1, url, title: "A" };
+  const tabB = { id: 44, windowId: 1, url, title: "B" };
+  const startA = Date.now() - 12_000;
+  const startB = Date.now() - 3_000;
+  api.upsertState({ state: "working", url, startedAt: startA }, tabA);
+  api.upsertState({ state: "working", url, startedAt: startB }, tabB);
+  assert.equal(api.activeRunForTab(tabA.id, "conversation:shared-done").startedAt, startA);
+  assert.equal(api.activeRunForTab(tabB.id, "conversation:shared-done").startedAt, startB);
+  api.upsertState({ state: "finished", url }, tabB);
+  assert.equal(api.activeRunForTab(tabA.id, "conversation:shared-done").startedAt, startA);
+  assert.equal(api.activeRunForTab(tabB.id, "conversation:shared-done"), null);
+});
 test.todo("discarded tabs cannot refresh stale active-run TTL");
 test.todo("cold-start tab removal waits for active-run initialization");
 test("monitor tab activation rejects unregistered or non-ChatGPT tabs", async () => {
@@ -312,4 +339,19 @@ test("monitor tab activation rejects unregistered or non-ChatGPT tabs", async ()
   registered.api.upsertState({ state: "idle", url: chatgpt.url }, chatgpt);
   assert.equal(await registered.api.activateTab(chatgpt.id), true);
 });
-test.todo("new-chat / -> /c/<id> has automated browser-level regression");
+test("new-chat / -> /c/<id> preserves run and migrates temporary prefs", async () => {
+  const { api } = await loadBackground();
+  const tab = { id: 45, windowId: 1, url: "https://chatgpt.com/", title: "New chat" };
+  const startedAt = Date.now() - 9_000;
+  api.upsertState({ state: "working", url: tab.url, startedAt }, tab);
+  await api.setChatPreference("tab:45", { alias: "Temporary alias", pending: true });
+
+  const nextTab = { ...tab, url: "https://chatgpt.com/c/new-id", title: "Named chat" };
+  await api.handleTabUpdated(tab.id, { status: "loading", url: nextTab.url }, nextTab);
+
+  assert.equal(api.getChat(tab.id).chatKey, "conversation:new-id");
+  assert.equal(api.getChat(tab.id).state, "working");
+  assert.equal(api.activeRunForTab(tab.id, "conversation:new-id").startedAt, startedAt);
+  assert.equal(api.prefsFor("conversation:new-id").alias, "Temporary alias");
+  assert.deepEqual(api.prefsFor("tab:45"), {});
+});
