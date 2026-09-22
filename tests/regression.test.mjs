@@ -161,8 +161,7 @@ test("concurrent sound requests share one offscreen creation", async () => {
 
   const first = api.ensureOffscreen();
   const second = api.ensureOffscreen();
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.equal(offscreenState.createCount, 1);
   releaseCreate();
