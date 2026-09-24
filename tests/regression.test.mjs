@@ -152,6 +152,15 @@ function contentFunction(name, dependencies = {}) {
   return vm.runInNewContext("(" + functionSource(contentSource, name) + ")", dependencies);
 }
 
+function dispatchBackgroundMessage(events, message, sender = {}) {
+  const listener = events.runtimeMessage.listeners[0];
+  assert.equal(typeof listener, "function");
+  return new Promise((resolve) => {
+    const keepAlive = listener(message, sender, resolve);
+    assert.equal(keepAlive, true);
+  });
+}
+
 
 test("Show idle chats defaults on in content and popup", () => {
   assert.match(contentSource, /monitorShowIdle:\s*true/);
@@ -218,6 +227,47 @@ test("background rejects all popup layout resets while locked", async () => {
 
   assert.deepEqual(storage.monitorPosition, initialPosition);
   assert.deepEqual(storage.monitorSize, initialSize);
+});
+
+test("background rejection from popup sends lock feedback to the active monitor", async () => {
+  const tab = {
+    id: 92,
+    windowId: 1,
+    active: true,
+    url: "https://chatgpt.com/c/popup-lock-feedback",
+    title: "Popup lock"
+  };
+  const initialPosition = { top: 20, left: 40 };
+  const initialSize = { width: 380, height: 440 };
+  const { events, storage, sentTabMessages } = await loadBackground({
+    stored: {
+      monitorLayoutLocked: true,
+      monitorPosition: initialPosition,
+      monitorSize: initialSize
+    },
+    tabs: [tab]
+  });
+
+  for (const type of [
+    "monitor-reset-position",
+    "monitor-reset-size",
+    "monitor-reset-chat-order",
+    "monitor-reset-layout"
+  ]) {
+    const response = await dispatchBackgroundMessage(events, { type });
+    assert.equal(response.ok, false);
+    assert.equal(response.locked, true);
+  }
+
+  assert.deepEqual(storage.monitorPosition, initialPosition);
+  assert.deepEqual(storage.monitorSize, initialSize);
+  assert.equal(
+    sentTabMessages.filter((entry) =>
+      entry.tabId === tab.id &&
+      entry.message?.type === "monitor-layout-locked-feedback"
+    ).length,
+    4
+  );
 });
 
 test("lock shake respects prefers-reduced-motion", () => {
