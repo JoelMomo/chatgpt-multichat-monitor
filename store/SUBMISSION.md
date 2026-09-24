@@ -1,6 +1,6 @@
 # Store submission pack
 
-Prepared for **ChatGPT MultiChat Monitor v0.3.0**.
+Prepared for **ChatGPT MultiChat Monitor v0.4.0**.
 
 ## Public URLs
 
@@ -14,7 +14,7 @@ Prepared for **ChatGPT MultiChat Monitor v0.3.0**.
 
 > Monitor the status of active ChatGPT conversations across open browser tabs and windows, surface chats that are working, completed or need attention, and let the user quickly switch to the relevant conversation.
 
-All extension features are directly related to this purpose: status detection, tab switching, local ordering/aliases/pins, compact display, recent status history, local sound alerts and update notices.
+All extension features are directly related to this purpose: status and visible-work-phase detection, reload-safe active timers, tab switching, local project/manual grouping, ordering/aliases/pins/Pending, layout locking, compact display, appearance controls, recent status history, local sound alerts and update notices.
 
 ## Short description
 
@@ -26,9 +26,11 @@ This is also the current manifest description.
 
 ChatGPT MultiChat Monitor adds a small floating status panel to chatgpt.com so you can keep track of several conversations at once without repeatedly checking every tab.
 
-The monitor shows when a conversation is Working, Done, Draft, waiting for attention, asking for a Retry, reporting an Error, Stopped or Idle. Working chats include an elapsed timer, and unread Done chats stay highlighted until you visit them.
+The monitor shows when a conversation is Working, Done, Draft, Pending, waiting for attention, asking for a Retry, reporting an Error, Stopped or Idle. Working chats include a reload-safe elapsed timer and can show the visible ChatGPT phase as Analyzing, Searching or Executing (with Spanish equivalents when the interface is in Spanish). Unread Done chats stay highlighted until you visit them.
 
-Click any row to switch directly to that ChatGPT tab and browser window. Chats can also be pinned, hidden, locally renamed or dragged into a persistent manual order. A compact 214 px mode keeps the panel out of the way when screen space matters.
+Chats are grouped by ChatGPT project by default, with Manual and None grouping modes also available. Project headers and manual separators can be reordered or collapsed, while chats can be reordered inside their current project without changing ChatGPT project membership. A layout lock prevents accidental structural edits and gives visual feedback when a blocked layout action is attempted.
+
+Click any row to switch directly to that ChatGPT tab and browser window. Chats can also be pinned, hidden, locally renamed or marked Pending. Compact mode keeps the panel out of the way when screen space matters. System, Dark, Light, Cozy, Neon and Minimal themes are available, together with opacity and optional dim-when-inactive behavior.
 
 Optional local sound alerts can be assigned to Done, Retry, Attention and Error states. A small recent-activity history is stored locally in the browser and contains only chat title, state and timestamp metadata.
 
@@ -144,12 +146,13 @@ Disclose local access to website content / prompt-composer content and current C
 >
 > To test:
 > 1. Open two or more ChatGPT conversations in separate tabs.
-> 2. Start generating a response in one tab. The floating monitor should show that conversation as Working with an elapsed timer.
-> 3. When generation finishes in a background tab, it becomes Done and remains highlighted until that tab is visited.
-> 4. Type text into a ChatGPT prompt box without sending it. If no higher-priority state is active, the monitor shows Draft.
-> 5. Click a monitor row to focus the corresponding tab/window.
-> 6. Use the row menu to pin, hide or locally rename a chat. Use the drag handle to reorder chats.
-> 7. Open the extension popup to test Compact mode and local sound-alert settings.
+> 2. Start generating a response in one tab. The floating monitor should show that conversation as Working with a continuous elapsed timer and, when ChatGPT exposes one, a visible phase such as Analyzing / Searching / Executing.
+> 3. Reload the generating conversation while it is still active. The current response timer should resume instead of restarting from zero.
+> 4. When generation finishes in a background tab, it becomes Done and remains highlighted until that tab is visited.
+> 5. Type text into a ChatGPT prompt box without sending it. If no higher-priority state is active, the monitor shows Draft.
+> 6. If the chats belong to ChatGPT projects, the monitor groups them under project headers. Drag a chat within its current project to persist its monitor order; this does not move the underlying ChatGPT conversation to another project.
+> 7. Lock the layout from the monitor header and try a layout edit. The action is blocked and the lock gives brief visual feedback; normal chat activation remains available.
+> 8. Open the extension popup to test Compact mode, grouping, themes/opacity, reset controls and local sound-alert settings.
 >
 > The extension contains no remote executable code. The only periodic external request is an HTTPS JSON request to GitHub's public latest-release endpoint, throttled to at most once every 24 hours.
 >
@@ -157,7 +160,7 @@ Disclose local access to website content / prompt-composer content and current C
 
 ## Assets
 
-All final store assets are in `store/assets/`.
+All store assets are in `store/assets/`. The existing screenshot set remains valid for the core monitor/popup flows; v0.4.0 listing text should be updated to describe project grouping, active phases/timers, layout lock and new appearance controls.
 
 ### Shared screenshots
 
