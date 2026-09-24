@@ -160,15 +160,15 @@ Disclose local access to website content / prompt-composer content and current C
 
 ## Assets
 
-All store assets are in `store/assets/`. The existing screenshot set remains valid for the core monitor/popup flows; v0.4.0 listing text should be updated to describe project grouping, active phases/timers, layout lock and new appearance controls.
+All store assets are in `store/assets/`. The v0.4.0 screenshots below were captured from the real extension running on ChatGPT in an isolated browser profile; no generated UI mockups are used.
 
 ### Shared screenshots
 
-- `shot-1-overview.png` — 1280x800
-- `shot-2-working-done.png` — 1280x800
-- `shot-3-compact.png` — 1280x800
-- `shot-4-order.png` — 1280x800
-- `shot-5-settings.png` — 1280x800
+- `shot-1-overview.png` — 1280x800 — real v0.4.0 overview with By project grouping and mixed chat states.
+- `shot-2-working-done.png` — 1280x800 — active work phases/timers alongside Done, Pending and attention states.
+- `shot-3-compact.png` — 1280x800 — real Compact mode with project groups and status indicators.
+- `shot-4-order.png` — 1280x800 — project organization with collapsed groups and the layout lock enabled.
+- `shot-5-settings.png` — 1280x800 — real monitor plus the real extension settings popup.
 
 These satisfy Chrome's current 1280x800 screenshot format and Edge's 1280x800 screenshot option.
 
