@@ -385,6 +385,30 @@ test("render keeps visible rows attached between snapshots", () => {
   assert.doesNotMatch(source, /else\s*\{\s*node\.row\.remove\(\)/);
 });
 
+
+test("project chat dragover validates destination without relying on render-local scope", () => {
+  const lookup = {
+    "c:conversation:a": { projectKey: "alpha", projectKnown: true, pinned: false },
+    "c:conversation:b": { projectKey: "alpha", projectKnown: true, pinned: false },
+    "c:conversation:c": { projectKey: "beta", projectKnown: true, pinned: false }
+  };
+  const projectSectionKey = contentFunction("projectSectionKey");
+  const sameProjectDragGroup = contentFunction("sameProjectDragGroup", { projectSectionKey });
+  const projectChatDropAllowed = contentFunction("projectChatDropAllowed", {
+    activeGroupMode: () => "project",
+    chatForLayoutToken: (token) => lookup[token] || null,
+    sameProjectDragGroup
+  });
+
+  assert.equal(projectChatDropAllowed("c:conversation:a", "c:conversation:b"), true);
+  assert.equal(projectChatDropAllowed("c:conversation:a", "c:conversation:c"), false);
+  assert.equal(projectChatDropAllowed("c:conversation:a", "p:project:alpha"), false);
+
+  const buildOverlaySource = functionSource(contentSource, "buildOverlay");
+  assert.match(buildOverlaySource, /projectChatDropAllowed\(draggedToken, targetToken\)/);
+  assert.doesNotMatch(buildOverlaySource, /\bmode\s*===\s*["']project["']/);
+});
+
 test("project drop-after marker targets the end of the project group", () => {
   const source = functionSource(contentSource, "projectDropVisualTarget");
   assert.match(source, /projectRows\[projectRows\.length - 1\]/);

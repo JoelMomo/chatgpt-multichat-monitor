@@ -870,6 +870,17 @@
     return chats.find((chat) => chat.chatKey === key) || null;
   }
 
+  function projectChatDropAllowed(draggedToken, targetToken) {
+    if (activeGroupMode() !== "project" || !String(draggedToken || "").startsWith("c:")) {
+      return true;
+    }
+    if (!String(targetToken || "").startsWith("c:")) return false;
+
+    const draggedChat = chatForLayoutToken(draggedToken);
+    const targetChat = chatForLayoutToken(targetToken);
+    return sameProjectDragGroup(draggedChat, targetChat);
+  }
+
   function persistLayoutMove(draggedToken, targetToken, before) {
     if (layoutLocked()) return Promise.resolve(null);
     const mode = activeGroupMode();
@@ -2407,11 +2418,7 @@
       }
 
       if (!targetToken || targetToken === draggedToken) return;
-      if (mode === "project" && draggedToken.startsWith("c:")) {
-        const draggedChat = chatForLayoutToken(draggedToken);
-        const targetChat = chatForLayoutToken(targetToken);
-        if (!sameProjectDragGroup(draggedChat, targetChat)) return;
-      }
+      if (!projectChatDropAllowed(draggedToken, targetToken)) return;
 
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
