@@ -118,7 +118,7 @@
 
 ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shares the status of your other open ChatGPT tabs.
 
-- Live **Working** state with elapsed time. The monitor UI is English, so detected ChatGPT work phases are normalized to **Analyzing**, **Searching** or **Executing** even when ChatGPT displays the source label in another language.
+- Live **Working** state with elapsed time. Detected work phases are kept canonical internally and displayed as **Analyzing / Searching / Executing** in English or **Analizando / Buscando / Ejecutando** in Spanish, following the current ChatGPT UI language rather than the source label that happened to be detected.
 - Reload-safe timing for the current response: active start/phase timestamps are kept locally by conversation and restored before the refreshed page evaluates its state.
 - **Done** stays lime until you actually visit that chat.
 - A non-empty prompt composer is shown as **Draft** instead of Idle; active generation still remains **Working** while you prepare the next prompt.

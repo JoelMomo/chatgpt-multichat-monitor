@@ -279,6 +279,28 @@
       .slice(0, 96);
   }
 
+  function workPhaseUiLanguage() {
+    const language = String(document.documentElement?.lang || "en").trim().toLowerCase();
+    return language === "es" || language.startsWith("es-") ? "es" : "en";
+  }
+
+  function localizeWorkPhase(value, language = workPhaseUiLanguage()) {
+    const phase = String(value || "").trim();
+    const spanish = String(language || "").trim().toLowerCase().startsWith("es");
+
+    if (spanish) {
+      if (phase === "Analyzing") return "Analizando";
+      if (phase === "Searching") return "Buscando";
+      if (phase === "Executing") return "Ejecutando";
+      return phase;
+    }
+
+    if (phase === "Analizando") return "Analyzing";
+    if (phase === "Buscando") return "Searching";
+    if (phase === "Ejecutando") return "Executing";
+    return phase;
+  }
+
   function classifyWorkPhaseText(value) {
     const text = normalizeWorkPhaseText(value);
     if (!text) return "";
@@ -715,7 +737,7 @@
 
   function statusText(chat, now) {
     if (chat.state === "working") {
-      const phase = String(chat.workPhase || "").trim() || "Working";
+      const phase = localizeWorkPhase(chat.workPhase) || "Working";
       return phase + " " + formatElapsed(now - (chat.startedAt || chat.updatedAt || now));
     }
     if (chat.state === "finished") {
@@ -730,7 +752,7 @@
   function statusTitle(chat, now) {
     if (chat.state !== "working") return stateName(chat.state);
     const total = formatElapsed(now - (chat.startedAt || chat.updatedAt || now));
-    const phase = String(chat.workPhase || "").trim();
+    const phase = localizeWorkPhase(chat.workPhase);
     if (!phase || !chat.phaseStartedAt) return "Active work: " + total;
     const phaseElapsed = formatElapsed(now - chat.phaseStartedAt);
     return "Active work: " + total + " · " + phase + ": " + phaseElapsed;

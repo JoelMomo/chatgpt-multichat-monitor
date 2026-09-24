@@ -1136,12 +1136,26 @@ async function setChatOrder(keys) {
   return { ok: true, undoId: registerLayoutUndo(before) };
 }
 
+async function resetMonitorPosition() {
+  await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
+  await chrome.storage.local.set({ monitorPosition: null });
+  return { ok: true };
+}
+
+async function resetMonitorSize() {
+  await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
+  await chrome.storage.local.set({ monitorSize: null });
+  return { ok: true };
+}
+
 async function resetChatOrder() {
   await ensureInitialized();
-  if (await layoutLocked()) return false;
+  if (await layoutLocked()) return { ok: false, locked: true };
   chatOrder = [];
   await chrome.storage.local.set({ [ORDER_KEY]: [] });
-  return true;
+  return { ok: true };
 }
 
 async function setProjectOrder(keys) {
@@ -1637,16 +1651,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "monitor-reset-position") {
+    resetMonitorPosition()
+      .then(async (result) => {
+        if (result?.locked) await signalLayoutLockedInActiveTab();
+        sendResponse(result);
+      })
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-reset-size") {
+    resetMonitorSize()
+      .then(async (result) => {
+        if (result?.locked) await signalLayoutLockedInActiveTab();
+        sendResponse(result);
+      })
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
   if (message?.type === "monitor-reset-layout") {
     resetLayout()
-      .then((result) => broadcast().then(() => sendResponse(result)))
+      .then(async (result) => {
+        if (result?.locked) await signalLayoutLockedInActiveTab();
+        else if (result?.ok) await broadcast();
+        sendResponse(result);
+      })
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
 
   if (message?.type === "monitor-reset-chat-order") {
     resetChatOrder()
-      .then((ok) => broadcast().then(() => sendResponse({ ok })))
+      .then(async (result) => {
+        if (result?.locked) await signalLayoutLockedInActiveTab();
+        else if (result?.ok) await broadcast();
+        sendResponse(result);
+      })
       .catch(() => sendResponse({ ok: false }));
     return true;
   }

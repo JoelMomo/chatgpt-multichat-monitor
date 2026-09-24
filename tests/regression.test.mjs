@@ -115,7 +115,7 @@ async function loadBackground(options = {}) {
   const exportsSource =
     "\nglobalThis.__testApi = {" +
     " ensureInitialized, upsertState, activeRunForTab, queueActiveRunsPersist, chatKeyFromUrl," +
-    " activateTab, setChatOrder, setChatPreference, prefsFor, handleTabUpdated, handleTabRemoved, rebuildRegistry, ensureOffscreen, snapshot, signalLayoutLockedInActiveTab," +
+    " activateTab, setChatOrder, setChatPreference, prefsFor, handleTabUpdated, handleTabRemoved, rebuildRegistry, ensureOffscreen, snapshot, signalLayoutLockedInActiveTab, resetMonitorPosition, resetMonitorSize, resetChatOrder, resetLayout," +
     " getChat(tabId) { return chats.get(tabId) || null; }" +
     "};";
 
@@ -165,12 +165,14 @@ test("locked chat click waits for drag movement before shaking", () => {
   assert.doesNotMatch(source, /target\.closest\("\.copy"\)[\s\S]{0,180}signalLayoutLocked\(\)/);
 });
 
-test("popup blocked layout actions request lock feedback", () => {
-  assert.match(popupSource, /monitor-signal-layout-locked/);
-  assert.match(popupSource, /guardLockedLayoutAction\(resetPosition/);
-  assert.match(popupSource, /guardLockedLayoutAction\(resetSize/);
-  assert.match(popupSource, /guardLockedLayoutAction\(resetOrder/);
-  assert.match(popupSource, /guardLockedLayoutAction\(resetLayout/);
+test("popup layout resets go through background enforcement", () => {
+  assert.match(popupSource, /monitor-reset-position/);
+  assert.match(popupSource, /monitor-reset-size/);
+  assert.match(popupSource, /monitor-reset-chat-order/);
+  assert.match(popupSource, /monitor-reset-layout/);
+  assert.doesNotMatch(popupSource, /monitorPosition:\s*null/);
+  assert.doesNotMatch(popupSource, /monitorSize:\s*null/);
+  assert.doesNotMatch(popupSource, /monitor-signal-layout-locked/);
 });
 
 test("background forwards popup lock feedback to active ChatGPT tab", async () => {
@@ -190,6 +192,32 @@ test("background forwards popup lock feedback to active ChatGPT tab", async () =
     ),
     true
   );
+});
+
+test("background rejects all popup layout resets while locked", async () => {
+  const initialPosition = { top: 12, left: 34 };
+  const initialSize = { width: 360, height: 420 };
+  const { api, storage } = await loadBackground({
+    stored: {
+      monitorLayoutLocked: true,
+      monitorPosition: initialPosition,
+      monitorSize: initialSize
+    }
+  });
+
+  for (const action of [
+    api.resetMonitorPosition,
+    api.resetMonitorSize,
+    api.resetChatOrder,
+    api.resetLayout
+  ]) {
+    const result = await action();
+    assert.equal(result.ok, false);
+    assert.equal(result.locked, true);
+  }
+
+  assert.deepEqual(storage.monitorPosition, initialPosition);
+  assert.deepEqual(storage.monitorSize, initialSize);
 });
 
 test("lock shake respects prefers-reduced-motion", () => {
@@ -360,6 +388,24 @@ test("phase classifier recognizes known visible labels", () => {
   assert.equal(classifyWorkPhaseText("Buscando"), "Searching");
   assert.equal(classifyWorkPhaseText("Using tools"), "Executing");
   assert.equal(classifyWorkPhaseText("Ejecutando"), "Executing");
+});
+
+test("work phases display in English or Spanish according to the current UI language", () => {
+  const englishUi = contentFunction("workPhaseUiLanguage", {
+    document: { documentElement: { lang: "en-US" } }
+  });
+  const spanishUi = contentFunction("workPhaseUiLanguage", {
+    document: { documentElement: { lang: "es-ES" } }
+  });
+  const localizeWorkPhase = contentFunction("localizeWorkPhase");
+
+  assert.equal(englishUi(), "en");
+  assert.equal(spanishUi(), "es");
+  assert.equal(localizeWorkPhase("Analyzing", "en"), "Analyzing");
+  assert.equal(localizeWorkPhase("Analyzing", "es"), "Analizando");
+  assert.equal(localizeWorkPhase("Searching", "es"), "Buscando");
+  assert.equal(localizeWorkPhase("Executing", "es"), "Ejecutando");
+  assert.equal(localizeWorkPhase("Analizando", "en"), "Analyzing");
 });
 
 

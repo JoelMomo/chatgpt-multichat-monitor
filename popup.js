@@ -58,8 +58,6 @@ const soundError = document.getElementById("soundError");
 const soundVolume = document.getElementById("soundVolume");
 const soundTests = [...document.querySelectorAll(".sound-test")];
 
-let popupLayoutLocked = false;
-
 const SOUND_CONTROLS = {
   monitorSoundDone: soundDone,
   monitorSoundRetry: soundRetry,
@@ -77,21 +75,23 @@ function applyPopupTheme(value) {
 }
 
 function refreshLayoutResetUi(locked) {
-  popupLayoutLocked = locked === true;
+  const isLocked = locked === true;
   for (const button of [resetPosition, resetSize, resetOrder, resetLayout]) {
     button.disabled = false;
-    button.setAttribute("aria-disabled", popupLayoutLocked ? "true" : "false");
-    button.title = popupLayoutLocked ? "Layout locked — click to highlight the lock" : "";
+    button.setAttribute("aria-disabled", isLocked ? "true" : "false");
+    button.title = isLocked ? "Layout locked — click to highlight the lock" : "";
   }
 }
 
-async function guardLockedLayoutAction(button, fallback) {
-  if (!popupLayoutLocked) return false;
-  await chrome.runtime.sendMessage({
-    type: "monitor-signal-layout-locked"
-  }).catch(() => null);
-  showButtonResult(button, "Locked", fallback);
-  return true;
+async function runLayoutReset(button, fallback, type, successText) {
+  const response = await chrome.runtime.sendMessage({ type }).catch(() => null);
+  const result = response?.locked
+    ? "Locked"
+    : response?.ok
+      ? successText
+      : "Failed";
+  showButtonResult(button, result, fallback);
+  return response;
 }
 
 function updateOpacityValue(value) {
@@ -305,15 +305,11 @@ animations.addEventListener("change", () => {
 });
 
 resetPosition.addEventListener("click", async () => {
-  if (await guardLockedLayoutAction(resetPosition, "Reset position")) return;
-  await chrome.storage.local.set({ monitorPosition: null });
-  showButtonResult(resetPosition, "Reset", "Reset position");
+  await runLayoutReset(resetPosition, "Reset position", "monitor-reset-position", "Reset");
 });
 
 resetSize.addEventListener("click", async () => {
-  if (await guardLockedLayoutAction(resetSize, "Auto size")) return;
-  await chrome.storage.local.set({ monitorSize: null });
-  showButtonResult(resetSize, "Auto", "Auto size");
+  await runLayoutReset(resetSize, "Auto size", "monitor-reset-size", "Auto");
 });
 
 restoreHidden.addEventListener("click", () => restoreHiddenChats(restoreHidden));
@@ -332,19 +328,11 @@ clearPending.addEventListener("click", () => {
 });
 
 resetOrder.addEventListener("click", async () => {
-  if (await guardLockedLayoutAction(resetOrder, "Reset chat order")) return;
-  const response = await chrome.runtime.sendMessage({
-    type: "monitor-reset-chat-order"
-  }).catch(() => null);
-  showButtonResult(resetOrder, response?.ok ? "Reset" : "Failed", "Reset chat order");
+  await runLayoutReset(resetOrder, "Reset chat order", "monitor-reset-chat-order", "Reset");
 });
 
 resetLayout.addEventListener("click", async () => {
-  if (await guardLockedLayoutAction(resetLayout, "Reset layout")) return;
-  const response = await chrome.runtime.sendMessage({
-    type: "monitor-reset-layout"
-  }).catch(() => null);
-  showButtonResult(resetLayout, response?.ok ? "Reset" : "Failed", "Reset layout");
+  await runLayoutReset(resetLayout, "Reset layout", "monitor-reset-layout", "Reset");
 });
 
 soundsEnabled.addEventListener("change", () => {
