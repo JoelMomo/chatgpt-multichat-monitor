@@ -10,7 +10,7 @@
 - The monitor now auto-fits its height to the visible chats until you manually resize it; a bottom **Auto size** button returns a custom-sized panel to chat-driven sizing.
 - **Auto size** is shown only while the layout is unlocked; locked mode hides the control entirely. Auto-fit now uses the panel's overall height constraint instead of a second list-level cap, preventing spurious scrollbars during state changes such as Working → Done.
 - Smart ordering now keeps Error, Retry, Attention, unread Done and manual Pending chats above routine states unless the user has created a manual order.
-- Added a persistent manual **Pending** state: right-click an Idle LED to mark/unmark the chat. Pending uses a distinct pink LED and remains local to the extension.
+- Idle chats are shown by default. Added a persistent manual **Pending** state: right-click an Idle LED to mark/unmark the chat. Pending uses a distinct pink LED and remains local to the extension.
 - Enlarged the invisible right-click target around Idle/Pending LEDs without changing the visible LED size, and gave Pending a slow 4.5-second pulse that respects the animation toggle.
 - Replaced the header's letter-based counters and separate alert badge with compact number circles for Working, Done, Pending and Attention; their fills are now deliberately low-opacity while the numbers keep the state color, and zero-value counters stay hidden.
 - Added persistent draggable separators. A header control creates a divider, dragging the divider changes group boundaries, and chats continue to smart-sort by state inside each section.
@@ -28,14 +28,14 @@
 - Project section headers now use only the project name, ignoring ChatGPT action labels such as **Abrir proyecto… / Open project…**.
 - Added the current extension version to the normal monitor footer while keeping it hidden in Compact mode.
 - Working rows now show visible ChatGPT work phases with a continuous active-response timer. Active start/phase timestamps are persisted per conversation and restored across same-page refreshes and extension service-worker restarts; transient Draft transitions preserve the active run instead of restarting its timer.
-- Fixed visible **Pensando** phase detection for ChatGPT's shimmer status element and repaired accented Spanish attention wording.
+- Fixed visible **Pensando** phase detection for ChatGPT's shimmer status element and repaired accented Spanish attention wording. Work phases are normalized to the extension's English UI labels (**Analyzing / Searching / Executing**) regardless of the source language shown by ChatGPT.
 - Hardened the monitor boundary against synthetic page events, restricted tab activation to registered ChatGPT tabs and enforced the layout lock in background layout mutations.
 - Active runs are now owned by browser tab instead of conversation ID, preventing duplicate instances of the same conversation from clearing or inheriting each other's timers. Temporary new-chat identity is promoted to the assigned conversation ID without resetting the run, and local temporary preferences migrate with it.
 - Active-run timing moved to extension session storage instead of long-term local storage. Discarded tabs now drop unverifiable Working runs instead of refreshing stale timers indefinitely.
 - Removed periodic state heartbeats and redundant content-script reinjection on ordinary service-worker wakes. Unchanged state updates no longer broadcast a full snapshot to every ChatGPT tab.
 - Kept visible chat rows attached across monitor snapshots instead of explicitly detaching and reinserting every row, reducing transient flicker during state changes and duplicate-tab updates.
 - Serialized offscreen-audio creation so simultaneous alerts share one document, pruned orphan temporary tab preferences and stopped exposing internal chat/section identifiers through drag payloads.
-- Added a persistent open/closed **layout lock** in the monitor header. Locked mode blocks accidental drag/reorder, section editing/collapse, separator creation, panel movement and resizing while leaving normal chat actions available; blocked layout gestures now give the closed lock a short visual shake.
+- Added a persistent open/closed **layout lock** in the monitor header. Locked mode blocks accidental drag/reorder, section editing/collapse, separator creation, panel movement and resizing while leaving normal chat actions available; blocked layout gestures and blocked popup resets now give the closed lock a short visual shake. Normal chat clicks do not trigger it, and the effect respects `prefers-reduced-motion`.
 - Done rows now show simply **Done** instead of a continuously updating “Done … ago” age.
 
 ## 0.3.0 - 2026-09-19

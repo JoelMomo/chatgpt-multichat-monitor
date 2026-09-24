@@ -1432,6 +1432,30 @@ async function cycleChat(states) {
   return activateTab(next.tabId);
 }
 
+async function signalLayoutLockedInActiveTab() {
+  let tabs = [];
+  try {
+    tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  } catch {
+    return false;
+  }
+
+  const tab = tabs.find((item) =>
+    Number.isInteger(item.id) &&
+    String(item.url || "").startsWith("https://chatgpt.com/")
+  );
+  if (!tab) return false;
+
+  try {
+    await chrome.tabs.sendMessage(tab.id, {
+      type: "monitor-layout-locked-feedback"
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function toggleMonitorInActiveTab() {
   let tabs = [];
   try {
@@ -1512,6 +1536,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     rebuildRegistry()
       .then(() => sendResponse({ chats: snapshot(), separators: separatorSnapshot() }))
       .catch(() => sendResponse({ chats: snapshot(), separators: separatorSnapshot() }));
+    return true;
+  }
+
+  if (message?.type === "monitor-signal-layout-locked") {
+    signalLayoutLockedInActiveTab()
+      .then((ok) => sendResponse({ ok }))
+      .catch(() => sendResponse({ ok: false }));
     return true;
   }
 

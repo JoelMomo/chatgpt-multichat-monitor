@@ -103,7 +103,7 @@
 - **Section controls:** manual section menus include rename, clear name, collapse/expand, move up/down and delete. Collapsed sections show their chat count.
 - **Section separators:** in Manual mode, add a separator from the monitor header and drag the separator itself wherever you want. Chats inside each resulting block continue to sort by state priority. Dragging highlights the destination section and empty/collapsed sections expose a temporary **Drop here** target.
 - **Quieter counters:** Working, Done, Pending and Attention counts use low-opacity tinted circles with the number itself in the state color.
-- **Safer layout editing:** a header **lock** toggles between open/closed states and prevents accidental layout edits while locked. Trying a blocked layout gesture gives the closed lock a short visual shake so the reason is immediately clear. The short-lived **Undo** action now appears as a compact header control instead of covering the monitor. **Reset layout** clears manual separators, project/manual ordering, assignments and collapse state while keeping aliases, pins, Pending and other chat preferences.
+- **Safer layout editing:** a header **lock** toggles between open/closed states and prevents accidental layout edits while locked. Trying a blocked layout gesture—or a blocked reset from the popup—gives the closed lock a short visual shake so the reason is immediately clear. A normal click on a chat does not trigger the shake, and reduced-motion preferences disable it. The short-lived **Undo** action now appears as a compact header control instead of covering the monitor. **Reset layout** clears manual separators, project/manual ordering, assignments and collapse state while keeping aliases, pins, Pending and other chat preferences.
 - **Version at a glance:** the normal monitor footer shows the current extension version; compact mode stays visually minimal and hides it.
 
 <p align="center">
@@ -118,7 +118,7 @@
 
 ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shares the status of your other open ChatGPT tabs.
 
-- Live **Working** state with elapsed time.
+- Live **Working** state with elapsed time. The monitor UI is English, so detected ChatGPT work phases are normalized to **Analyzing**, **Searching** or **Executing** even when ChatGPT displays the source label in another language.
 - Reload-safe timing for the current response: active start/phase timestamps are kept locally by conversation and restored before the refreshed page evaluates its state.
 - **Done** stays lime until you actually visit that chat.
 - A non-empty prompt composer is shown as **Draft** instead of Idle; active generation still remains **Working** while you prepare the next prompt.
@@ -129,7 +129,7 @@ ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shar
 - In **By project**, each project is a named collapsible section. Drag project headers to choose their monitor order, or drag chat text to create a manual order inside the current project; a chat cannot be dragged into another ChatGPT project.
 - In **Manual**, custom named separators and chat assignments are persistent. Inside each manual section, state priority remains active and manual order is the tie-breaker within the same state.
 - In **None**, section headers are hidden and the existing global manual order remains available. Switching modes does not erase the stored manual sections.
-- Right-click an Idle LED to mark that conversation as **Pending**; right-click the pink Pending LED again to clear it.
+- Idle chats are shown by default. Right-click an Idle LED to mark that conversation as **Pending**; right-click the pink Pending LED again to clear it.
 - Auto-fitting overlay that follows the visible chats, while still supporting persistent manual resizing, compact mode and collapse.
 - System / Dark / Light plus Cozy, Neon and Minimal themes, with adjustable opacity and optional hover-focus dimming.
 - Per-state local sound alerts with volume and test controls.

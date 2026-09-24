@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const backgroundSource = fs.readFileSync(path.join(root, "background.js"), "utf8");
 const contentSource = fs.readFileSync(path.join(root, "content.js"), "utf8");
+const popupSource = fs.readFileSync(path.join(root, "popup.js"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 
 const copy = (value) => JSON.parse(JSON.stringify(value));
@@ -21,6 +22,7 @@ function chromeMock({ stored = {}, storedSession = {}, tabs = [], offscreenCreat
   const storage = copy(stored);
   const sessionStorage = copy(storedSession);
   const currentTabs = copy(tabs);
+  const sentTabMessages = [];
   const offscreenState = { exists: false, createCount: 0 };
   const events = {
     runtimeMessage: event(), installed: event(), startup: event(),
@@ -60,7 +62,10 @@ function chromeMock({ stored = {}, storedSession = {}, tabs = [], offscreenCreat
       onRemoved: events.removed,
       onUpdated: events.updated,
       async query() { return copy(currentTabs); },
-      async sendMessage() { return { initializing: true }; },
+      async sendMessage(tabId, message) {
+        sentTabMessages.push({ tabId, message: copy(message) });
+        return { initializing: true };
+      },
       async get(tabId) {
         const tab = currentTabs.find((item) => item.id === tabId);
         if (!tab) throw new Error("Unknown tab");
@@ -91,7 +96,7 @@ function chromeMock({ stored = {}, storedSession = {}, tabs = [], offscreenCreat
     }
   };
 
-  return { chrome, storage, sessionStorage, events, offscreenState };
+  return { chrome, storage, sessionStorage, events, offscreenState, sentTabMessages };
 }
 
 async function loadBackground(options = {}) {
@@ -110,7 +115,7 @@ async function loadBackground(options = {}) {
   const exportsSource =
     "\nglobalThis.__testApi = {" +
     " ensureInitialized, upsertState, activeRunForTab, queueActiveRunsPersist, chatKeyFromUrl," +
-    " activateTab, setChatOrder, setChatPreference, prefsFor, handleTabUpdated, handleTabRemoved, rebuildRegistry, ensureOffscreen, snapshot," +
+    " activateTab, setChatOrder, setChatPreference, prefsFor, handleTabUpdated, handleTabRemoved, rebuildRegistry, ensureOffscreen, snapshot, signalLayoutLockedInActiveTab," +
     " getChat(tabId) { return chats.get(tabId) || null; }" +
     "};";
 
@@ -146,6 +151,53 @@ function functionSource(source, name) {
 function contentFunction(name, dependencies = {}) {
   return vm.runInNewContext("(" + functionSource(contentSource, name) + ")", dependencies);
 }
+
+
+test("Show idle chats defaults on in content and popup", () => {
+  assert.match(contentSource, /monitorShowIdle:\s*true/);
+  assert.match(popupSource, /monitorShowIdle:\s*true/);
+});
+
+test("locked chat click waits for drag movement before shaking", () => {
+  const source = functionSource(contentSource, "buildOverlay");
+  assert.match(source, /lockedPointerGesture\s*=\s*\{/);
+  assert.match(source, /Math\.hypot\(dx, dy\) < 5/);
+  assert.doesNotMatch(source, /target\.closest\("\.copy"\)[\s\S]{0,180}signalLayoutLocked\(\)/);
+});
+
+test("popup blocked layout actions request lock feedback", () => {
+  assert.match(popupSource, /monitor-signal-layout-locked/);
+  assert.match(popupSource, /guardLockedLayoutAction\(resetPosition/);
+  assert.match(popupSource, /guardLockedLayoutAction\(resetSize/);
+  assert.match(popupSource, /guardLockedLayoutAction\(resetOrder/);
+  assert.match(popupSource, /guardLockedLayoutAction\(resetLayout/);
+});
+
+test("background forwards popup lock feedback to active ChatGPT tab", async () => {
+  const tab = {
+    id: 91,
+    windowId: 1,
+    active: true,
+    url: "https://chatgpt.com/c/lock-feedback",
+    title: "Lock"
+  };
+  const { api, sentTabMessages } = await loadBackground({ tabs: [tab] });
+  assert.equal(await api.signalLayoutLockedInActiveTab(), true);
+  assert.equal(
+    sentTabMessages.some((entry) =>
+      entry.tabId === tab.id &&
+      entry.message?.type === "monitor-layout-locked-feedback"
+    ),
+    true
+  );
+});
+
+test("lock shake respects prefers-reduced-motion", () => {
+  assert.match(
+    contentSource,
+    /@media \(prefers-reduced-motion:reduce\)\{\.lock-button\.lock-feedback\{animation:none!important\}\}/
+  );
+});
 
 test("manifest remains scoped to ChatGPT", () => {
   assert.equal(manifest.manifest_version, 3);
@@ -302,9 +354,12 @@ test("null persisted phase timestamp remains null", async () => {
 test("phase classifier recognizes known visible labels", () => {
   const normalizeWorkPhaseText = contentFunction("normalizeWorkPhaseText");
   const classifyWorkPhaseText = contentFunction("classifyWorkPhaseText", { normalizeWorkPhaseText });
-  assert.equal(classifyWorkPhaseText("Pensando"), "Analizando");
+  assert.equal(classifyWorkPhaseText("Pensando"), "Analyzing");
+  assert.equal(classifyWorkPhaseText("Analizando"), "Analyzing");
   assert.equal(classifyWorkPhaseText("Searching"), "Searching");
+  assert.equal(classifyWorkPhaseText("Buscando"), "Searching");
   assert.equal(classifyWorkPhaseText("Using tools"), "Executing");
+  assert.equal(classifyWorkPhaseText("Ejecutando"), "Executing");
 });
 
 
@@ -328,7 +383,7 @@ test("phase detector sees ChatGPT Pensando shimmer span", () => {
     isVisible: () => true,
     classifyWorkPhaseText
   });
-  assert.equal(detectWorkPhase(), "Analizando");
+  assert.equal(detectWorkPhase(), "Analyzing");
 });
 
 test("attention detector keeps common English and Spanish prompts", () => {

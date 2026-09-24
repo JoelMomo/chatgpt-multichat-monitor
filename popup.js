@@ -1,6 +1,6 @@
 const DEFAULTS = {
   monitorEnabled: true,
-  monitorShowIdle: false,
+  monitorShowIdle: true,
   monitorCompact: false,
   monitorAnimations: true,
   monitorOpacity: 1,
@@ -58,6 +58,8 @@ const soundError = document.getElementById("soundError");
 const soundVolume = document.getElementById("soundVolume");
 const soundTests = [...document.querySelectorAll(".sound-test")];
 
+let popupLayoutLocked = false;
+
 const SOUND_CONTROLS = {
   monitorSoundDone: soundDone,
   monitorSoundRetry: soundRetry,
@@ -75,11 +77,21 @@ function applyPopupTheme(value) {
 }
 
 function refreshLayoutResetUi(locked) {
-  const disabled = locked === true;
+  popupLayoutLocked = locked === true;
   for (const button of [resetPosition, resetSize, resetOrder, resetLayout]) {
-    button.disabled = disabled;
-    button.title = disabled ? "Unlock layout in the monitor first" : "";
+    button.disabled = false;
+    button.setAttribute("aria-disabled", popupLayoutLocked ? "true" : "false");
+    button.title = popupLayoutLocked ? "Layout locked — click to highlight the lock" : "";
   }
+}
+
+async function guardLockedLayoutAction(button, fallback) {
+  if (!popupLayoutLocked) return false;
+  await chrome.runtime.sendMessage({
+    type: "monitor-signal-layout-locked"
+  }).catch(() => null);
+  showButtonResult(button, "Locked", fallback);
+  return true;
 }
 
 function updateOpacityValue(value) {
@@ -293,11 +305,13 @@ animations.addEventListener("change", () => {
 });
 
 resetPosition.addEventListener("click", async () => {
+  if (await guardLockedLayoutAction(resetPosition, "Reset position")) return;
   await chrome.storage.local.set({ monitorPosition: null });
   showButtonResult(resetPosition, "Reset", "Reset position");
 });
 
 resetSize.addEventListener("click", async () => {
+  if (await guardLockedLayoutAction(resetSize, "Auto size")) return;
   await chrome.storage.local.set({ monitorSize: null });
   showButtonResult(resetSize, "Auto", "Auto size");
 });
@@ -318,6 +332,7 @@ clearPending.addEventListener("click", () => {
 });
 
 resetOrder.addEventListener("click", async () => {
+  if (await guardLockedLayoutAction(resetOrder, "Reset chat order")) return;
   const response = await chrome.runtime.sendMessage({
     type: "monitor-reset-chat-order"
   }).catch(() => null);
@@ -325,6 +340,7 @@ resetOrder.addEventListener("click", async () => {
 });
 
 resetLayout.addEventListener("click", async () => {
+  if (await guardLockedLayoutAction(resetLayout, "Reset layout")) return;
   const response = await chrome.runtime.sendMessage({
     type: "monitor-reset-layout"
   }).catch(() => null);

@@ -14,7 +14,7 @@
 
   const DEFAULTS = {
     monitorEnabled: true,
-    monitorShowIdle: false,
+    monitorShowIdle: true,
     monitorCollapsed: false,
     monitorCompact: false,
     monitorAnimations: true,
@@ -80,6 +80,7 @@
   let floatingMenu = null;
   let undoTimer = null;
   let lockFeedbackTimer = null;
+  let lockedPointerGesture = null;
   let currentUndoId = "";
   let draggedChatKey = null;
   let draggedSectionToken = null;
@@ -283,29 +284,14 @@
     if (!text) return "";
 
     if (/\b(analizando|pensando|razonando|analyzing|analysing|thinking|reasoning|réfléchissant|raisonnant|analysiert|denkt\s+nach|analizzando|ragionando|raciocinando)\b/i.test(text)) {
-      if (/\b(analizando|pensando|razonando)\b/i.test(text)) return "Analizando";
-      if (/\b(réfléchissant|raisonnant)\b/i.test(text)) return "Analyse";
-      if (/\b(analysiert|denkt\s+nach)\b/i.test(text)) return "Analyse";
-      if (/\b(analizzando|ragionando)\b/i.test(text)) return "Analisi";
-      if (/\b(raciocinando)\b/i.test(text)) return "Analisando";
       return "Analyzing";
     }
 
     if (/\b(buscando|navegando|searching|browsing|recherchant|recherche\s+en\s+cours|sucht|cercando|pesquisando)\b/i.test(text)) {
-      if (/\b(buscando|navegando)\b/i.test(text)) return "Buscando";
-      if (/\b(recherchant|recherche\s+en\s+cours)\b/i.test(text)) return "Recherche";
-      if (/\b(sucht)\b/i.test(text)) return "Suche";
-      if (/\b(cercando)\b/i.test(text)) return "Ricerca";
-      if (/\b(pesquisando)\b/i.test(text)) return "Pesquisando";
       return "Searching";
     }
 
     if (/\b(ejecutando|usando\s+herramientas?|consultando|leyendo|abriendo|escribiendo|editando|creando|descargando|subiendo|executing|running|using\s+tools?|reading|opening|fetching|writing|editing|creating|downloading|uploading|exécutant|utilisant|ausführend|eseguendo|usando\s+strumenti?|executando|usando\s+ferramentas?)\b/i.test(text)) {
-      if (/\b(ejecutando|usando\s+herramientas?|consultando|leyendo|abriendo|escribiendo|editando|creando|descargando|subiendo)\b/i.test(text)) return "Ejecutando";
-      if (/\b(exécutant|utilisant)\b/i.test(text)) return "Exécution";
-      if (/\b(ausführend)\b/i.test(text)) return "Ausführung";
-      if (/\b(eseguendo|usando\s+strumenti?)\b/i.test(text)) return "Esecuzione";
-      if (/\b(executando|usando\s+ferramentas?)\b/i.test(text)) return "Executando";
       return "Executing";
     }
 
@@ -2152,6 +2138,7 @@
       ":host([data-theme='minimal']) *{font-family:Arial,Helvetica,sans-serif}:host([data-theme='minimal']) #panel{color:#222;background:#fbfbfa;border-color:#d9d9d6;border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.12)}:host([data-theme='minimal']) .head{border-bottom-color:#e2e2df}:host([data-theme='minimal']) .count-badge{box-shadow:none}:host([data-theme='minimal']) .add-separator{color:#777}:host([data-theme='minimal']) .add-separator:hover:not(:disabled){background:#ececea;color:#222}:host([data-theme='minimal']) .add-separator::after{background:#fbfbfa}:host([data-theme='minimal']) .undo-header{color:#444}:host([data-theme='minimal']) .chat-row:hover,:host([data-theme='minimal']) .chat-row.current{background:#f0f0ed}:host([data-theme='minimal']) .separator-rule{background:#d3d3d0}:host([data-theme='minimal']) .separator-caption{color:#737373}:host([data-theme='minimal']) .separator-input{border-color:#ccccca;background:#fff;color:#222}:host([data-theme='minimal']) .separator-count{color:#888}:host([data-theme='minimal']) .section-dropzone{border-color:#ccccca;color:#888}:host([data-theme='minimal']) .section-dropzone.drop-section{border-color:#888;background:#f2f2ef;color:#444}:host([data-theme='minimal']) .more,:host([data-theme='minimal']) .header-tool,:host([data-theme='minimal']) .collapse{color:#6d6d6d}:host([data-theme='minimal']) .more:hover,:host([data-theme='minimal']) .header-tool:hover,:host([data-theme='minimal']) .collapse:hover{background:#ececea;color:#222}:host([data-theme='minimal']) .lock-button.is-locked{color:#444}:host([data-theme='minimal']) .meta{color:#777}:host([data-theme='minimal']) .pinned .chat-title{color:#111}:host([data-theme='minimal']) .empty{color:#777}:host([data-theme='minimal']) .foot{color:#777;border-top-color:#e2e2df}:host([data-theme='minimal']) .version-label{color:#999}:host([data-theme='minimal']) .auto-size-button{border-color:#d2d2cf;background:#fff;color:#555}:host([data-theme='minimal']) .auto-size-button:hover{background:#ececea;color:#222}:host([data-theme='minimal']) .resize-handle{background:linear-gradient(135deg,transparent 0 52%,#888 53% 58%,transparent 59% 68%,#888 69% 74%,transparent 75%)}:host([data-theme='minimal']) .floating-menu{border-color:#d9d9d6;background:#fff;box-shadow:0 10px 24px rgba(0,0,0,.12)}:host([data-theme='minimal']) .menu-action{color:#333}:host([data-theme='minimal']) .menu-action:hover{background:#efefed}" +
       ".flash{animation:stateflash 1.2s ease-out 1}.no-animations .state-working .dot,.no-animations .state-pending .dot,.no-animations .flash,.no-animations .lock-button.lock-feedback{animation:none}:host([data-theme='light']) .flash{animation-name:stateflashlight}" +
       "@keyframes lockshake{0%,100%{transform:translateX(0)}20%{transform:translateX(-2px)}40%{transform:translateX(2px)}60%{transform:translateX(-1.5px)}80%{transform:translateX(1.5px)}}" +
+      "@media (prefers-reduced-motion:reduce){.lock-button.lock-feedback{animation:none!important}}" +
       "@keyframes workingpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.52;transform:scale(.82)}}@keyframes pendingpulse{0%,100%{opacity:1;transform:scale(1);box-shadow:0 0 0 3px rgba(244,114,182,.08),0 0 9px rgba(244,114,182,.18)}50%{opacity:.62;transform:scale(.9);box-shadow:0 0 0 4px rgba(244,114,182,.05),0 0 13px rgba(244,114,182,.12)}}" +
       "@keyframes stateflash{0%{background:#2b3440}100%{background:transparent}}@keyframes stateflashlight{0%{background:#dce7f2}100%{background:transparent}}";
 
@@ -2252,16 +2239,42 @@
 
     shadow.append(style, panel, floatingMenu);
     shadow.addEventListener("pointerdown", (event) => {
+      lockedPointerGesture = null;
       if (!layoutLocked() || !(event.target instanceof Element)) return;
       const target = event.target;
       if (target.closest(".lock-button,.collapse,.undo-header,.more,.floating-menu")) return;
 
+      if (target.closest(".copy")) {
+        lockedPointerGesture = {
+          pointerId: event.pointerId,
+          x: event.clientX,
+          y: event.clientY
+        };
+        return;
+      }
+
       const blockedLayoutTarget =
-        target.closest(".copy,.section-separator,.add-separator,.resize-handle") ||
+        target.closest(".section-separator,.add-separator,.resize-handle") ||
         (target.closest(".head") && !target.closest("button"));
 
       if (blockedLayoutTarget) signalLayoutLocked();
     }, true);
+
+    shadow.addEventListener("pointermove", (event) => {
+      if (!layoutLocked() || !lockedPointerGesture ||
+          lockedPointerGesture.pointerId !== event.pointerId) return;
+      const dx = event.clientX - lockedPointerGesture.x;
+      const dy = event.clientY - lockedPointerGesture.y;
+      if (Math.hypot(dx, dy) < 5) return;
+      lockedPointerGesture = null;
+      signalLayoutLocked();
+    }, true);
+
+    const clearLockedPointerGesture = () => {
+      lockedPointerGesture = null;
+    };
+    shadow.addEventListener("pointerup", clearLockedPointerGesture, true);
+    shadow.addEventListener("pointercancel", clearLockedPointerGesture, true);
 
     for (const eventType of [
       "click", "contextmenu", "dblclick", "keydown",
@@ -2519,6 +2532,12 @@
         setRestingState();
       }
       sendResponse({ ok: true });
+      return true;
+    }
+
+    if (message?.type === "monitor-layout-locked-feedback") {
+      if (layoutLocked()) signalLayoutLocked();
+      sendResponse({ ok: layoutLocked() });
       return true;
     }
 
