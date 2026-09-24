@@ -845,28 +845,65 @@
       .filter(Boolean);
   }
 
+  function sameProjectDragGroup(a, b) {
+    if (!a || !b) return false;
+    return projectSectionKey(a) === projectSectionKey(b) &&
+      Boolean(a.pinned) === Boolean(b.pinned);
+  }
+
+  function chatForLayoutToken(token) {
+    if (!String(token || "").startsWith("c:")) return null;
+    const key = token.slice(2);
+    return chats.find((chat) => chat.chatKey === key) || null;
+  }
+
   function persistLayoutMove(draggedToken, targetToken, before) {
     if (layoutLocked()) return Promise.resolve(null);
     const mode = activeGroupMode();
 
     if (mode === "project") {
-      if (!draggedToken.startsWith("p:") || !targetToken.startsWith("p:")) {
-        return Promise.resolve(null);
-      }
-      const tokens = currentLayoutTokens()
-        .filter((token) => token.startsWith("p:") && token !== draggedToken);
-      let targetIndex = tokens.indexOf(targetToken);
-      if (targetIndex < 0) return Promise.resolve(null);
-      if (!before) targetIndex += 1;
-      tokens.splice(targetIndex, 0, draggedToken);
+      if (draggedToken.startsWith("p:") && targetToken.startsWith("p:")) {
+        const tokens = currentLayoutTokens()
+          .filter((token) => token.startsWith("p:") && token !== draggedToken);
+        let targetIndex = tokens.indexOf(targetToken);
+        if (targetIndex < 0) return Promise.resolve(null);
+        if (!before) targetIndex += 1;
+        tokens.splice(targetIndex, 0, draggedToken);
 
-      return sendMessage({
-        type: "monitor-set-project-order",
-        projectKeys: tokens.map((token) => token.slice(2))
-      }).then((response) => {
-        if (response?.ok && response.undoId) showLayoutUndo("Project moved", response.undoId);
-        return response;
-      });
+        return sendMessage({
+          type: "monitor-set-project-order",
+          projectKeys: tokens.map((token) => token.slice(2))
+        }).then((response) => {
+          if (response?.ok && response.undoId) showLayoutUndo("Project moved", response.undoId);
+          return response;
+        });
+      }
+
+      if (draggedToken.startsWith("c:") && targetToken.startsWith("c:")) {
+        const draggedChat = chatForLayoutToken(draggedToken);
+        const targetChat = chatForLayoutToken(targetToken);
+        if (!sameProjectDragGroup(draggedChat, targetChat)) return Promise.resolve(null);
+
+        const tokens = currentLayoutTokens()
+          .filter((token) => {
+            if (!token.startsWith("c:") || token === draggedToken) return false;
+            return sameProjectDragGroup(draggedChat, chatForLayoutToken(token));
+          });
+        let targetIndex = tokens.indexOf(targetToken);
+        if (targetIndex < 0) return Promise.resolve(null);
+        if (!before) targetIndex += 1;
+        tokens.splice(targetIndex, 0, draggedToken);
+
+        return sendMessage({
+          type: "monitor-set-chat-order",
+          chatKeys: tokens.map((token) => token.slice(2))
+        }).then((response) => {
+          if (response?.ok && response.undoId) showLayoutUndo("Chat moved", response.undoId);
+          return response;
+        });
+      }
+
+      return Promise.resolve(null);
     }
 
     const tokens = currentLayoutTokens().filter((token) => token !== draggedToken);
@@ -895,10 +932,10 @@
   function visibleGroupFor(chat) {
     const now = Date.now();
     const mode = activeGroupMode();
-    if (mode === "project") return [];
 
     return chats.filter((item) => {
       if (item.hidden || item.pinned !== chat.pinned || !isRecent(item, now)) return false;
+      if (mode === "project") return sameProjectDragGroup(chat, item);
       if (mode === "manual" && separators.length) {
         return item.section === chat.section && item.state === chat.state;
       }
@@ -917,7 +954,7 @@
   }
 
   function moveChat(chat, direction) {
-    if (layoutLocked() || activeGroupMode() === "project") return Promise.resolve(null);
+    if (layoutLocked()) return Promise.resolve(null);
     const group = visibleGroupFor(chat);
     const index = group.findIndex((item) => item.chatKey === chat.chatKey);
     const nextIndex = index + direction;
@@ -1019,6 +1056,17 @@
     zone.setAttribute("aria-hidden", "true");
     sectionDropNodes.set(sectionId, zone);
     return zone;
+  }
+
+  function projectDropVisualTarget(projectId, before) {
+    const header = separatorNodes.get(projectId)?.row || null;
+    if (before || !list) return header;
+
+    const projectRows = [...list.children].filter((element) =>
+      element.classList?.contains("chat-row") &&
+      (element.dataset.sectionId || "") === projectId
+    );
+    return projectRows.length ? projectRows[projectRows.length - 1] : header;
   }
 
   function clearDropMarkers() {
@@ -1299,7 +1347,7 @@
     };
 
     copy.addEventListener("dragstart", (event) => {
-      if (layoutLocked() || !node.chat || activeGroupMode() === "project") {
+      if (layoutLocked() || !node.chat) {
         event.preventDefault();
         return;
       }
@@ -1389,7 +1437,7 @@
       );
     }
 
-    if (!layoutLocked() && activeGroupMode() !== "project") {
+    if (!layoutLocked()) {
       floatingMenu.append(
         createMenuButton("Move up", () => {
           moveChat(chat, -1).then(closeMenus);
@@ -1729,17 +1777,16 @@
         node.row.remove();
         rowNodes.delete(tabId);
         renderedStates.delete(tabId);
-      } else {
-        node.row.remove();
       }
     }
-    for (const node of separatorNodes.values()) node.row.remove();
     for (const zone of sectionDropNodes.values()) zone.remove();
     sectionDropNodes.clear();
 
+    const desiredRowIds = new Set();
     const desiredSeparatorIds = new Set();
 
     const appendChat = (chat, sectionId = "") => {
+      desiredRowIds.add(chat.tabId);
       const node = rowNodes.get(chat.tabId) || createRow(chat.tabId);
       node.chat = chat;
       node.row.dataset.chatKey = chat.chatKey;
@@ -1748,16 +1795,20 @@
       if (chat.url === location.href) node.row.classList.add("current");
       if (chat.pinned) node.row.classList.add("pinned");
 
-      const canDrag = !locked && mode !== "project";
+      const canDrag = !locked;
       node.copy.draggable = canDrag;
       node.copy.title = locked
         ? "Layout locked"
-        : canDrag
-          ? "Drag to reorder"
-          : "Chats stay inside their ChatGPT project";
+        : mode === "project"
+          ? "Drag to reorder within this project"
+          : "Drag to reorder";
       node.copy.setAttribute(
         "aria-label",
-        locked ? "Chat layout locked" : canDrag ? "Drag chat to reorder" : "Chat project grouping is automatic"
+        locked
+          ? "Chat layout locked"
+          : mode === "project"
+            ? "Drag chat to reorder within this project"
+            : "Drag chat to reorder"
       );
 
       const visibleTitle = projectScopedDisplayTitle(chat, mode);
@@ -1827,6 +1878,10 @@
       }
     } else {
       for (const chat of visible) appendChat(chat, "");
+    }
+
+    for (const [tabId, node] of rowNodes) {
+      if (!desiredRowIds.has(tabId)) node.row.remove();
     }
 
     for (const [id, node] of separatorNodes) {
@@ -2259,12 +2314,10 @@
 
       if (draggedToken.startsWith("p:")) {
         let projectId = "";
-        let visualTarget = rawTarget;
         let before = false;
 
         if (rawTarget.classList.contains("chat-row")) {
           projectId = rawTarget.dataset.sectionId || "";
-          visualTarget = separatorNodes.get(projectId)?.row || rawTarget;
           before = false;
         } else if (rawTarget.classList.contains("project-section")) {
           projectId = rawTarget.dataset.projectId || "";
@@ -2276,6 +2329,9 @@
 
         const targetToken = projectId ? "p:" + projectId : "";
         if (!targetToken || targetToken === draggedToken) return;
+
+        const visualTarget = projectDropVisualTarget(projectId, before);
+        if (!visualTarget) return;
 
         event.preventDefault();
         if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
@@ -2321,6 +2377,12 @@
       }
 
       if (!targetToken || targetToken === draggedToken) return;
+      if (mode === "project" && draggedToken.startsWith("c:")) {
+        const draggedChat = chatForLayoutToken(draggedToken);
+        const targetChat = chatForLayoutToken(targetToken);
+        if (!sameProjectDragGroup(draggedChat, targetChat)) return;
+      }
+
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
 

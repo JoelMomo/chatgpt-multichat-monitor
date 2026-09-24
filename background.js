@@ -565,7 +565,7 @@ function snapshot() {
 
       const aManual = manualIndex.has(a.chatKey) ? manualIndex.get(a.chatKey) : null;
       const bManual = manualIndex.has(b.chatKey) ? manualIndex.get(b.chatKey) : null;
-      if (!projectGrouped && !segmented) {
+      if ((!segmented && !projectGrouped) || projectGrouped) {
         if (aManual !== null && bManual !== null && aManual !== bManual) return aManual - bManual;
         if (aManual !== null && bManual === null) return -1;
         if (aManual === null && bManual !== null) return 1;

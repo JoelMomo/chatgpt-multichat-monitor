@@ -110,7 +110,7 @@ async function loadBackground(options = {}) {
   const exportsSource =
     "\nglobalThis.__testApi = {" +
     " ensureInitialized, upsertState, activeRunForTab, queueActiveRunsPersist, chatKeyFromUrl," +
-    " activateTab, setChatOrder, setChatPreference, prefsFor, handleTabUpdated, handleTabRemoved, rebuildRegistry, ensureOffscreen," +
+    " activateTab, setChatOrder, setChatPreference, prefsFor, handleTabUpdated, handleTabRemoved, rebuildRegistry, ensureOffscreen, snapshot," +
     " getChat(tabId) { return chats.get(tabId) || null; }" +
     "};";
 
@@ -342,6 +342,52 @@ test("attention detector keeps common English and Spanish prompts", () => {
   assert.equal(responseNeedsAttention(), true);
   text = "¿Te gustaría que lo haga?";
   assert.equal(responseNeedsAttention(), true);
+});
+
+
+test("By project honors manual chat order inside the same project", async () => {
+  const { api } = await loadBackground({
+    stored: {
+      monitorGroupMode: "project",
+      monitorChatOrder: ["conversation:b", "conversation:a"]
+    }
+  });
+  const tabA = { id: 81, windowId: 1, url: "https://chatgpt.com/c/a", title: "A" };
+  const tabB = { id: 82, windowId: 1, url: "https://chatgpt.com/c/b", title: "B" };
+  for (const tab of [tabA, tabB]) {
+    api.upsertState({
+      state: "idle",
+      url: tab.url,
+      title: tab.title,
+      projectKnown: true,
+      projectKey: "project-1",
+      projectName: "Project 1"
+    }, tab);
+  }
+  assert.deepEqual(
+    Array.from(api.snapshot(), (chat) => chat.chatKey),
+    ["conversation:b", "conversation:a"]
+  );
+});
+
+test("project drag remains inside the current project/pin group", () => {
+  const projectSectionKey = contentFunction("projectSectionKey");
+  const sameProjectDragGroup = contentFunction("sameProjectDragGroup", { projectSectionKey });
+  const base = { projectKey: "alpha", projectKnown: true, pinned: false };
+  assert.equal(sameProjectDragGroup(base, { ...base }), true);
+  assert.equal(sameProjectDragGroup(base, { ...base, projectKey: "beta" }), false);
+  assert.equal(sameProjectDragGroup(base, { ...base, pinned: true }), false);
+});
+
+test("render keeps visible rows attached between snapshots", () => {
+  const source = functionSource(contentSource, "render");
+  assert.match(source, /const desiredRowIds = new Set\(\)/);
+  assert.doesNotMatch(source, /else\s*\{\s*node\.row\.remove\(\)/);
+});
+
+test("project drop-after marker targets the end of the project group", () => {
+  const source = functionSource(contentSource, "projectDropVisualTarget");
+  assert.match(source, /projectRows\[projectRows\.length - 1\]/);
 });
 
 test("drag payloads do not expose chat or section identifiers", () => {

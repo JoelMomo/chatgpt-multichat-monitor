@@ -15,11 +15,11 @@
 - Replaced the header's letter-based counters and separate alert badge with compact number circles for Working, Done, Pending and Attention; their fills are now deliberately low-opacity while the numbers keep the state color, and zero-value counters stay hidden.
 - Added persistent draggable separators. A header control creates a divider, dragging the divider changes group boundaries, and chats continue to smart-sort by state inside each section.
 - Removed the visible `⋮⋮` drag handles: the full chat text area (name + status line) is now the drag target, separator lines drag directly, and the add-separator icon is slightly smaller.
-- Improved drag feedback with destination-section highlighting and temporary **Drop here** targets for empty sections.
+- Improved drag feedback with destination-section highlighting and temporary **Drop here** targets for empty sections. Project drop-after markers now render after the project's last visible chat instead of between its header and first chat.
 - Added a short-lived **Undo** action for chat moves and separator changes; it now appears as a compact **↶** control in the monitor header instead of an overlay toast.
 - Added **Reset layout** to clear separators, section assignments and manual ordering while preserving aliases, pins, Pending, hidden state and other chat preferences.
 - Added **By project** grouping as the default: the extension detects project membership from ChatGPT project routes, canonical URLs and sidebar conversation links, then creates automatic project sections locally.
-- Project headers can now be dragged or moved from their section menu to persist a custom project order without moving the underlying ChatGPT projects.
+- Project headers can now be dragged or moved from their section menu to persist a custom project order without moving the underlying ChatGPT projects. Chats can also be dragged to persist an order inside their current project/pin group without changing project membership.
 - In **By project**, automatic chat titles no longer repeat the project name when the project header already provides that context; custom aliases remain unchanged.
 - Added **Manual / None** grouping modes without discarding existing manual section data when switching modes.
 - Added optional manual section names with an understated line–label–line design, inline rename, collapse/expand and collapsed chat counts.
@@ -33,6 +33,7 @@
 - Active runs are now owned by browser tab instead of conversation ID, preventing duplicate instances of the same conversation from clearing or inheriting each other's timers. Temporary new-chat identity is promoted to the assigned conversation ID without resetting the run, and local temporary preferences migrate with it.
 - Active-run timing moved to extension session storage instead of long-term local storage. Discarded tabs now drop unverifiable Working runs instead of refreshing stale timers indefinitely.
 - Removed periodic state heartbeats and redundant content-script reinjection on ordinary service-worker wakes. Unchanged state updates no longer broadcast a full snapshot to every ChatGPT tab.
+- Kept visible chat rows attached across monitor snapshots instead of explicitly detaching and reinserting every row, reducing transient flicker during state changes and duplicate-tab updates.
 - Serialized offscreen-audio creation so simultaneous alerts share one document, pruned orphan temporary tab preferences and stopped exposing internal chat/section identifiers through drag payloads.
 - Added a persistent open/closed **layout lock** in the monitor header. Locked mode blocks accidental drag/reorder, section editing/collapse, separator creation, panel movement and resizing while leaving normal chat actions available.
 - Done rows now show simply **Done** instead of a continuously updating “Done … ago” age.
