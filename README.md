@@ -91,18 +91,19 @@
 
 ## What's new in 0.4.0
 
-- **Auto size + manual resize:** the monitor follows the number of visible chats by default, while a custom size remains available whenever you drag the resize handle. The footer's **Auto size** button returns to chat-driven sizing.
-- **Appearance controls:** choose System, Dark or Light theme and adjust monitor opacity from the popup.
+- **Auto size + manual resize:** the monitor follows the number of visible chats by default, while a custom size remains available whenever you drag the resize handle. The footer's **Auto size** button returns to chat-driven sizing and is hidden while the layout is locked. Auto-fit uses the panel's available height without introducing a second list cap, avoiding unnecessary scrollbars during normal state changes.
+- **Appearance controls:** choose System, Dark, Light, Cozy, Neon or Minimal theme and adjust monitor opacity from the popup. Optional **Dim when inactive** fades the monitor until you hover or focus it.
 - **Smart priority order:** chats automatically move by priority: Error → Retry → Attention → Done → Pending → Working → Stopped → Draft → Idle. Manual drag order behaves as before without separators; inside separator blocks, state priority remains active.
-- **Active work timer:** Working chats now show the current visible ChatGPT phase when available — for example **Analizando / Analyzing**, search or tool execution — followed by the total active time for the current response. Changing phase does not reset the timer; hovering the status also shows the current-phase elapsed time. The active response start is persisted by conversation, so reloading the ChatGPT page or restarting the extension service worker does not reset the timer while that response is still active.
 - **Pending:** right-click an Idle LED to mark a chat for follow-up. Pending uses a distinct pink LED, pulses much more slowly than Working, and stays marked locally until you clear it. The invisible LED hit target is larger than the visible dot for easier interaction.
-- **Automatic project groups:** **By project** is now the default grouping mode. The extension detects ChatGPT project routes and sidebar links locally, creates project headers automatically and keeps **Other chats / No project** as safe fallbacks when membership is unavailable or absent. Project headers can now be dragged to persist a custom project order.
+- **Automatic project groups:** **By project** is now the default grouping mode. The extension detects ChatGPT project routes and sidebar links locally, creates project headers automatically and keeps **Other chats / No project** as safe fallbacks when membership is unavailable or absent. Project headers can be dragged to persist a custom project order, and chat text can be dragged to reorder chats inside the same project without changing ChatGPT project membership.
+- **Active work timer:** Working chats show the visible ChatGPT phase when available (for example **Analizando / Analyzing**, search or tool execution) plus total active time. The start timestamp is persisted per conversation, so refreshing the same ChatGPT page restores the same timer instead of starting from zero; transient Draft transitions also keep the same active run. Done rows stay quiet and show only **Done**, without an age counter.
+- **Cleaner project titles:** in **By project**, automatic chat titles omit a repeated `Project name ·` prefix because the project header already provides that context. Custom aliases remain unchanged.
 - **Grouping modes:** choose **By project**, **Manual** or **None** in the popup. Manual separators are preserved when you temporarily switch modes.
 - **Named, collapsible sections:** manual separators can be named with a double-click or their section menu, use a quiet `──── NAME ────` treatment, and can be collapsed. Automatic project groups can be collapsed too.
 - **Section controls:** manual section menus include rename, clear name, collapse/expand, move up/down and delete. Collapsed sections show their chat count.
 - **Section separators:** in Manual mode, add a separator from the monitor header and drag the separator itself wherever you want. Chats inside each resulting block continue to sort by state priority. Dragging highlights the destination section and empty/collapsed sections expose a temporary **Drop here** target.
 - **Quieter counters:** Working, Done, Pending and Attention counts use low-opacity tinted circles with the number itself in the state color.
-- **Safer layout editing:** a header **lock** toggles between open/closed states and prevents accidental layout edits while locked. The short-lived **Undo** action now appears as a compact header control instead of covering the monitor. **Reset layout** clears manual separators, project/manual ordering, assignments and collapse state while keeping aliases, pins, Pending and other chat preferences.
+- **Safer layout editing:** a header **lock** toggles between open/closed states and prevents accidental layout edits while locked. Trying a blocked layout gesture—or a blocked reset from the popup—gives the closed lock a short visual shake so the reason is immediately clear. A normal click on a chat does not trigger the shake, and reduced-motion preferences disable it. The short-lived **Undo** action now appears as a compact header control instead of covering the monitor. **Reset layout** clears manual separators, project/manual ordering, assignments and collapse state while keeping aliases, pins, Pending and other chat preferences.
 - **Version at a glance:** the normal monitor footer shows the current extension version; compact mode stays visually minimal and hides it.
 
 <p align="center">
@@ -117,19 +118,20 @@
 
 ChatGPT MultiChat Monitor keeps a small floating panel on `chatgpt.com` and shares the status of your other open ChatGPT tabs.
 
-- Live **Working** state with elapsed time. When ChatGPT exposes a visible active phase, the row shows that phase (such as **Analizando / Analyzing**, searching or executing) while the timer continues to represent total active work on the response.
+- Live **Working** state with elapsed time. Detected work phases are kept canonical internally and displayed as **Analyzing / Searching / Executing** in English or **Analizando / Buscando / Ejecutando** in Spanish, following the current ChatGPT UI language rather than the source label that happened to be detected.
+- Reload-safe timing for the current response: active start/phase timestamps are kept locally by conversation and restored before the refreshed page evaluates its state.
 - **Done** stays lime until you actually visit that chat.
 - A non-empty prompt composer is shown as **Draft** instead of Idle; active generation still remains **Working** while you prepare the next prompt.
 - Detects recoverable **Retry needed** states, likely **Needs attention** responses and visible **Errors**.
 - Click any row to focus the correct tab and browser window.
 - Pin, hide or locally rename chats.
 - Chats are grouped by their ChatGPT project by default. Project membership is detected from the current project URL, canonical URL or matching ChatGPT sidebar link; no project API or external service is used.
-- In **By project**, each project is a named collapsible section and chats keep state-priority ordering inside it. Drag project headers to choose their monitor order; dragging an individual chat still cannot pretend to move it to another ChatGPT project.
+- In **By project**, each project is a named collapsible section. Drag project headers to choose their monitor order, or drag chat text to create a manual order inside the current project; a chat cannot be dragged into another ChatGPT project.
 - In **Manual**, custom named separators and chat assignments are persistent. Inside each manual section, state priority remains active and manual order is the tie-breaker within the same state.
 - In **None**, section headers are hidden and the existing global manual order remains available. Switching modes does not erase the stored manual sections.
-- Right-click an Idle LED to mark that conversation as **Pending**; right-click the pink Pending LED again to clear it.
+- Idle chats are shown by default. Right-click an Idle LED to mark that conversation as **Pending**; right-click the pink Pending LED again to clear it.
 - Auto-fitting overlay that follows the visible chats, while still supporting persistent manual resizing, compact mode and collapse.
-- System / Dark / Light themes plus adjustable monitor opacity.
+- System / Dark / Light plus Cozy, Neon and Minimal themes, with adjustable opacity and optional hover-focus dimming.
 - Per-state local sound alerts with volume and test controls.
 - Small local recent-activity history.
 - Browser badge and keyboard shortcuts for fast navigation.
@@ -233,13 +235,13 @@ The monitor is designed to stay open all day without continuously scanning conve
 - Observer-triggered checks are throttled.
 - Prompt-box input events update **Draft** immediately without scanning conversation content.
 - The fast path checks ChatGPT's direct Stop signal.
-- While a response is active, the detector also inspects only the latest assistant turn for visible live phase labels such as analysis, search and tool execution. Phase changes update the label without resetting the response's total active-work timer.
 - The broad button fallback runs only every 5 seconds.
 - Retry/error detection checks capped sets of relevant visible elements only while useful.
 - The **Needs attention** heuristic reads only the tail of the latest assistant response once when generation finishes.
 - Live timer text updates only in visible browser tabs.
 - Working animation uses a small opacity/transform pulse and can be disabled.
 - Rows are updated in place instead of rebuilding the full overlay.
+- Cross-tab state sync is event-driven; unchanged tabs do not send periodic heartbeat snapshots, and service-worker wakes rebuild state without reinjecting the content script.
 - No continuous external polling and no telemetry.
 - Update checks are opportunistic and throttled to at most one public GitHub releases request every 24 hours.
 
@@ -275,8 +277,9 @@ The popup lets you:
 - Enable Compact mode
 - Lock / unlock layout editing from the monitor header
 - Choose **By project**, **Manual** or **None** chat grouping
-- Choose System, Dark or Light theme
+- Choose System, Dark, Light, Cozy, Neon or Minimal theme
 - Adjust floating monitor opacity from 35% to 100%
+- Optionally dim the monitor while the pointer is away, restoring full configured opacity on hover/focus
 - Disable state animations
 - Reset the floating monitor position or custom size
 - Restore hidden chats
@@ -307,12 +310,13 @@ Stored data is limited to:
 - Grouping mode and layout-lock state
 - Project membership/name detection stays local. Names are read from ChatGPT while tabs are open; collapsed project-section state is stored locally against the detected project identifier, not sent anywhere
 - Recent activity metadata
+- Session-only active response timing metadata used to restore a running timer after service-worker/page reloads; it is not kept as long-term browser storage
 - Update-check timestamps, latest known release version and dismissed-version state
 - One-time What's new acknowledgement state
 
 ## Limitations
 
-ChatGPT does not expose a public browser API for conversation generation state, internal compute time or project membership. Activity, visible work phases and project grouping are inferred from the browser interface and ChatGPT's own URLs/sidebar links, so a future ChatGPT frontend change may require detector updates. The work timer measures the period for which the current response is visibly active in ChatGPT; it is not a server-side compute timer. Active response timing metadata is stored locally only while needed so a page reload can restore the same timer.
+ChatGPT does not expose a public browser API for conversation generation state, internal compute time or project membership. Activity, visible work phases and project grouping are inferred from the browser interface and ChatGPT's own URLs/sidebar links, so a future ChatGPT frontend change may require detector updates. Active response timing metadata is stored locally only while needed so refreshing the same conversation can restore the running timer.
 
 **Needs attention** is intentionally conservative and heuristic. A response ending in a question can be classified as attention even when a reply is not strictly required.
 

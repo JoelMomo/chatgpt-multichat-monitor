@@ -7,7 +7,6 @@
   const ATTENTION_TTL_MS = 30 * 60 * 1000;
   const ERROR_TTL_MS = 10 * 60 * 1000;
   const FALLBACK_SCAN_MS = 5000;
-  const HEARTBEAT_MS = 30000;
   const MUTATION_THROTTLE_MS = 500;
   const ERROR_SCAN_MS = 1000;
   const LATE_ISSUE_GRACE_MS = 10000;
@@ -15,11 +14,12 @@
 
   const DEFAULTS = {
     monitorEnabled: true,
-    monitorShowIdle: false,
+    monitorShowIdle: true,
     monitorCollapsed: false,
     monitorCompact: false,
     monitorAnimations: true,
     monitorOpacity: 1,
+    monitorHoverFocus: false,
     monitorTheme: "dark",
     monitorGroupMode: "project",
     monitorSectionUi: {},
@@ -46,6 +46,7 @@
   let lastFallbackScanAt = 0;
   let lastErrorScanAt = 0;
   let lastWorkPhaseSeenAt = 0;
+  let activeRunStartedAt = null;
   let activeRunRestoreGraceUntil = 0;
   let bootstrapped = false;
   let manualStopUntil = 0;
@@ -78,6 +79,8 @@
   let openMenuSectionId = null;
   let floatingMenu = null;
   let undoTimer = null;
+  let lockFeedbackTimer = null;
+  let lockedPointerGesture = null;
   let currentUndoId = "";
   let draggedChatKey = null;
   let draggedSectionToken = null;
@@ -276,34 +279,41 @@
       .slice(0, 96);
   }
 
+  function workPhaseUiLanguage() {
+    const language = String(document.documentElement?.lang || "en").trim().toLowerCase();
+    return language === "es" || language.startsWith("es-") ? "es" : "en";
+  }
+
+  function localizeWorkPhase(value, language = workPhaseUiLanguage()) {
+    const phase = String(value || "").trim();
+    const spanish = String(language || "").trim().toLowerCase().startsWith("es");
+
+    if (spanish) {
+      if (phase === "Analyzing") return "Analizando";
+      if (phase === "Searching") return "Buscando";
+      if (phase === "Executing") return "Ejecutando";
+      return phase;
+    }
+
+    if (phase === "Analizando") return "Analyzing";
+    if (phase === "Buscando") return "Searching";
+    if (phase === "Ejecutando") return "Executing";
+    return phase;
+  }
+
   function classifyWorkPhaseText(value) {
     const text = normalizeWorkPhaseText(value);
     if (!text) return "";
 
     if (/\b(analizando|pensando|razonando|analyzing|analysing|thinking|reasoning|réfléchissant|raisonnant|analysiert|denkt\s+nach|analizzando|ragionando|raciocinando)\b/i.test(text)) {
-      if (/\b(analizando|pensando|razonando)\b/i.test(text)) return "Analizando";
-      if (/\b(réfléchissant|raisonnant)\b/i.test(text)) return "Analyse";
-      if (/\b(analysiert|denkt\s+nach)\b/i.test(text)) return "Analyse";
-      if (/\b(analizzando|ragionando)\b/i.test(text)) return "Analisi";
-      if (/\b(raciocinando)\b/i.test(text)) return "Analisando";
       return "Analyzing";
     }
 
     if (/\b(buscando|navegando|searching|browsing|recherchant|recherche\s+en\s+cours|sucht|cercando|pesquisando)\b/i.test(text)) {
-      if (/\b(buscando|navegando)\b/i.test(text)) return "Buscando";
-      if (/\b(recherchant|recherche\s+en\s+cours)\b/i.test(text)) return "Recherche";
-      if (/\b(sucht)\b/i.test(text)) return "Suche";
-      if (/\b(cercando)\b/i.test(text)) return "Ricerca";
-      if (/\b(pesquisando)\b/i.test(text)) return "Pesquisando";
       return "Searching";
     }
 
     if (/\b(ejecutando|usando\s+herramientas?|consultando|leyendo|abriendo|escribiendo|editando|creando|descargando|subiendo|executing|running|using\s+tools?|reading|opening|fetching|writing|editing|creating|downloading|uploading|exécutant|utilisant|ausführend|eseguendo|usando\s+strumenti?|executando|usando\s+ferramentas?)\b/i.test(text)) {
-      if (/\b(ejecutando|usando\s+herramientas?|consultando|leyendo|abriendo|escribiendo|editando|creando|descargando|subiendo)\b/i.test(text)) return "Ejecutando";
-      if (/\b(exécutant|utilisant)\b/i.test(text)) return "Exécution";
-      if (/\b(ausführend)\b/i.test(text)) return "Ausführung";
-      if (/\b(eseguendo|usando\s+strumenti?)\b/i.test(text)) return "Esecuzione";
-      if (/\b(executando|usando\s+ferramentas?)\b/i.test(text)) return "Executando";
       return "Executing";
     }
 
@@ -324,6 +334,7 @@
       '[data-testid*="reason"]',
       '[data-testid*="search"]',
       '[data-testid*="tool"]',
+      ".loading-shimmer-tertiary",
       '[aria-live="polite"]',
       '[aria-live="assertive"]'
     ].join(",");
@@ -454,7 +465,7 @@
     const text = latestAssistantText();
     if (!text) return false;
     if (/\?\s*$/.test(text)) return true;
-    return /(would you like me to|do you want me to|shall i|want me to|quieres que|te gustaria que|te gustarÃƒÂ­a que|prefieres que|debo hacerlo)/i.test(text);
+    return /(would you like me to|do you want me to|shall i|want me to|quieres que|te gustaria que|te gustaría que|prefieres que|debo hacerlo)/i.test(text);
   }
 
   function clearFinishTimer() {
@@ -544,14 +555,19 @@
       updatedAt: Date.now()
     };
 
-    if (state !== "working") {
+    if (state === "working") {
+      activeRunStartedAt = localState.startedAt || activeRunStartedAt;
+    } else {
       localState.workPhase = "";
       localState.phaseStartedAt = null;
       lastWorkPhaseSeenAt = 0;
+      if (state !== "draft") activeRunStartedAt = null;
     }
 
-    if (state === "idle" || state === "draft") {
+    if (state === "idle") {
       localState.startedAt = null;
+      localState.finishedAt = null;
+    } else if (state === "draft") {
       localState.finishedAt = null;
     }
 
@@ -610,7 +626,7 @@
       if (localState.state !== "working") {
         clearResetTimer();
         setState("working", {
-          startedAt: now,
+          startedAt: activeRunStartedAt || localState.startedAt || now,
           finishedAt: null,
           workPhase: detectedPhase,
           phaseStartedAt: detectedPhase ? now : null
@@ -721,11 +737,11 @@
 
   function statusText(chat, now) {
     if (chat.state === "working") {
-      const phase = String(chat.workPhase || "").trim() || "Working";
+      const phase = localizeWorkPhase(chat.workPhase) || "Working";
       return phase + " " + formatElapsed(now - (chat.startedAt || chat.updatedAt || now));
     }
     if (chat.state === "finished") {
-      return "Done " + formatElapsed(now - (chat.finishedAt || chat.updatedAt || now)) + " ago";
+      return "Done";
     }
     if (chat.state === "interrupted") {
       return "Stopped " + formatElapsed(now - (chat.finishedAt || chat.updatedAt || now)) + " ago";
@@ -736,7 +752,7 @@
   function statusTitle(chat, now) {
     if (chat.state !== "working") return stateName(chat.state);
     const total = formatElapsed(now - (chat.startedAt || chat.updatedAt || now));
-    const phase = String(chat.workPhase || "").trim();
+    const phase = localizeWorkPhase(chat.workPhase);
     if (!phase || !chat.phaseStartedAt) return "Active work: " + total;
     const phaseElapsed = formatElapsed(now - chat.phaseStartedAt);
     return "Active work: " + total + " · " + phase + ": " + phaseElapsed;
@@ -774,11 +790,14 @@
       startedAt: Number(run.startedAt),
       finishedAt: null,
       workPhase: String(run.workPhase || ""),
-      phaseStartedAt: Number.isFinite(Number(run.phaseStartedAt))
+      phaseStartedAt: run.phaseStartedAt != null &&
+        Number.isFinite(Number(run.phaseStartedAt)) &&
+        Number(run.phaseStartedAt) > 0
         ? Number(run.phaseStartedAt)
         : null,
       updatedAt: Date.now()
     };
+    activeRunStartedAt = localState.startedAt;
     lastWorkPhaseSeenAt = localState.workPhase ? Date.now() : 0;
     activeRunRestoreGraceUntil = Date.now() + 8000;
     return true;
@@ -809,6 +828,18 @@
     return settings.monitorLayoutLocked === true;
   }
 
+  function signalLayoutLocked() {
+    if (!layoutLocked() || !lockButton) return;
+    lockButton.classList.remove("lock-feedback");
+    void lockButton.offsetWidth;
+    lockButton.classList.add("lock-feedback");
+    if (lockFeedbackTimer) clearTimeout(lockFeedbackTimer);
+    lockFeedbackTimer = setTimeout(() => {
+      lockFeedbackTimer = null;
+      lockButton?.classList.remove("lock-feedback");
+    }, 320);
+  }
+
   function sectionUiState(sectionKey) {
     const all = settings.monitorSectionUi;
     if (!all || typeof all !== "object") return {};
@@ -835,28 +866,76 @@
       .filter(Boolean);
   }
 
+  function sameProjectDragGroup(a, b) {
+    if (!a || !b) return false;
+    return projectSectionKey(a) === projectSectionKey(b) &&
+      Boolean(a.pinned) === Boolean(b.pinned);
+  }
+
+  function chatForLayoutToken(token) {
+    if (!String(token || "").startsWith("c:")) return null;
+    const key = token.slice(2);
+    return chats.find((chat) => chat.chatKey === key) || null;
+  }
+
+  function projectChatDropAllowed(draggedToken, targetToken) {
+    if (activeGroupMode() !== "project" || !String(draggedToken || "").startsWith("c:")) {
+      return true;
+    }
+    if (!String(targetToken || "").startsWith("c:")) return false;
+
+    const draggedChat = chatForLayoutToken(draggedToken);
+    const targetChat = chatForLayoutToken(targetToken);
+    return sameProjectDragGroup(draggedChat, targetChat);
+  }
+
   function persistLayoutMove(draggedToken, targetToken, before) {
     if (layoutLocked()) return Promise.resolve(null);
     const mode = activeGroupMode();
 
     if (mode === "project") {
-      if (!draggedToken.startsWith("p:") || !targetToken.startsWith("p:")) {
-        return Promise.resolve(null);
-      }
-      const tokens = currentLayoutTokens()
-        .filter((token) => token.startsWith("p:") && token !== draggedToken);
-      let targetIndex = tokens.indexOf(targetToken);
-      if (targetIndex < 0) return Promise.resolve(null);
-      if (!before) targetIndex += 1;
-      tokens.splice(targetIndex, 0, draggedToken);
+      if (draggedToken.startsWith("p:") && targetToken.startsWith("p:")) {
+        const tokens = currentLayoutTokens()
+          .filter((token) => token.startsWith("p:") && token !== draggedToken);
+        let targetIndex = tokens.indexOf(targetToken);
+        if (targetIndex < 0) return Promise.resolve(null);
+        if (!before) targetIndex += 1;
+        tokens.splice(targetIndex, 0, draggedToken);
 
-      return sendMessage({
-        type: "monitor-set-project-order",
-        projectKeys: tokens.map((token) => token.slice(2))
-      }).then((response) => {
-        if (response?.ok && response.undoId) showLayoutUndo("Project moved", response.undoId);
-        return response;
-      });
+        return sendMessage({
+          type: "monitor-set-project-order",
+          projectKeys: tokens.map((token) => token.slice(2))
+        }).then((response) => {
+          if (response?.ok && response.undoId) showLayoutUndo("Project moved", response.undoId);
+          return response;
+        });
+      }
+
+      if (draggedToken.startsWith("c:") && targetToken.startsWith("c:")) {
+        const draggedChat = chatForLayoutToken(draggedToken);
+        const targetChat = chatForLayoutToken(targetToken);
+        if (!sameProjectDragGroup(draggedChat, targetChat)) return Promise.resolve(null);
+
+        const tokens = currentLayoutTokens()
+          .filter((token) => {
+            if (!token.startsWith("c:") || token === draggedToken) return false;
+            return sameProjectDragGroup(draggedChat, chatForLayoutToken(token));
+          });
+        let targetIndex = tokens.indexOf(targetToken);
+        if (targetIndex < 0) return Promise.resolve(null);
+        if (!before) targetIndex += 1;
+        tokens.splice(targetIndex, 0, draggedToken);
+
+        return sendMessage({
+          type: "monitor-set-chat-order",
+          chatKeys: tokens.map((token) => token.slice(2))
+        }).then((response) => {
+          if (response?.ok && response.undoId) showLayoutUndo("Chat moved", response.undoId);
+          return response;
+        });
+      }
+
+      return Promise.resolve(null);
     }
 
     const tokens = currentLayoutTokens().filter((token) => token !== draggedToken);
@@ -885,10 +964,10 @@
   function visibleGroupFor(chat) {
     const now = Date.now();
     const mode = activeGroupMode();
-    if (mode === "project") return [];
 
     return chats.filter((item) => {
       if (item.hidden || item.pinned !== chat.pinned || !isRecent(item, now)) return false;
+      if (mode === "project") return sameProjectDragGroup(chat, item);
       if (mode === "manual" && separators.length) {
         return item.section === chat.section && item.state === chat.state;
       }
@@ -907,7 +986,7 @@
   }
 
   function moveChat(chat, direction) {
-    if (layoutLocked() || activeGroupMode() === "project") return Promise.resolve(null);
+    if (layoutLocked()) return Promise.resolve(null);
     const group = visibleGroupFor(chat);
     const index = group.findIndex((item) => item.chatKey === chat.chatKey);
     const nextIndex = index + direction;
@@ -1011,6 +1090,17 @@
     return zone;
   }
 
+  function projectDropVisualTarget(projectId, before) {
+    const header = separatorNodes.get(projectId)?.row || null;
+    if (before || !list) return header;
+
+    const projectRows = [...list.children].filter((element) =>
+      element.classList?.contains("chat-row") &&
+      (element.dataset.sectionId || "") === projectId
+    );
+    return projectRows.length ? projectRows[projectRows.length - 1] : header;
+  }
+
   function clearDropMarkers() {
     dropTarget = null;
     for (const node of rowNodes.values()) {
@@ -1052,6 +1142,12 @@
     openMenuTabId = null;
     openMenuSectionId = null;
     if (floatingMenu) floatingMenu.hidden = true;
+  }
+
+  function blockUntrustedEvent(event) {
+    if (event.isTrusted) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
   }
 
   function createMenuButton(label, action) {
@@ -1169,7 +1265,7 @@
       closeMenus();
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", draggedSectionToken);
+        event.dataTransfer.setData("text/plain", "monitor-layout-drag");
       }
     });
 
@@ -1283,7 +1379,7 @@
     };
 
     copy.addEventListener("dragstart", (event) => {
-      if (layoutLocked() || !node.chat || activeGroupMode() === "project") {
+      if (layoutLocked() || !node.chat) {
         event.preventDefault();
         return;
       }
@@ -1308,7 +1404,7 @@
 
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", draggedChatKey);
+        event.dataTransfer.setData("text/plain", "monitor-layout-drag");
       }
     });
 
@@ -1323,20 +1419,24 @@
       });
     });
 
-    main.addEventListener("click", () => activateChat(tabId));
-    main.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-      more.click();
-    });
-
-    more.addEventListener("click", (event) => {
-      event.stopPropagation();
+    const toggleMenu = () => {
       const willOpen = openMenuTabId !== tabId;
       closeMenus();
       if (willOpen && node.chat) {
         openMenuTabId = tabId;
         openFloatingMenu(more, node.chat);
       }
+    };
+
+    main.addEventListener("click", () => activateChat(tabId));
+    main.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      toggleMenu();
+    });
+
+    more.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleMenu();
     });
 
     rowNodes.set(tabId, node);
@@ -1369,7 +1469,7 @@
       );
     }
 
-    if (!layoutLocked() && activeGroupMode() !== "project") {
+    if (!layoutLocked()) {
       floatingMenu.append(
         createMenuButton("Move up", () => {
           moveChat(chat, -1).then(closeMenus);
@@ -1516,7 +1616,7 @@
   }
 
   function resolvedTheme(value = settings.monitorTheme) {
-    if (value === "light" || value === "dark") return value;
+    if (["light", "dark", "cozy", "neon", "minimal"].includes(value)) return value;
     return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
   }
 
@@ -1540,9 +1640,15 @@
     if (!host || !panel) return;
     const theme = resolvedTheme();
     host.dataset.theme = theme;
-    const opacity = normalizedOpacity();
-    panel.style.opacity = String(opacity);
-    if (floatingMenu) floatingMenu.style.opacity = String(opacity);
+
+    const activeOpacity = normalizedOpacity();
+    const idleOpacity = settings.monitorHoverFocus === true
+      ? Math.max(0.25, activeOpacity * 0.58)
+      : activeOpacity;
+
+    panel.style.setProperty("--monitor-active-opacity", String(activeOpacity));
+    panel.style.setProperty("--monitor-idle-opacity", String(idleOpacity));
+    if (floatingMenu) floatingMenu.style.opacity = String(activeOpacity);
   }
 
   function applyPanelSize(size = settings.monitorSize) {
@@ -1555,12 +1661,11 @@
     panel.classList.toggle("auto-fit", canResize && !manualSize);
     if (resizeHandle) resizeHandle.hidden = !canResize || !editAllowed;
     if (autoSizeButton) {
-      autoSizeButton.disabled = !editAllowed || !canResize || !manualSize;
-      autoSizeButton.title = !editAllowed
-        ? "Unlock layout to change monitor size"
-        : manualSize
-          ? "Fit monitor to the visible chats"
-          : "Monitor already follows the visible chats";
+      autoSizeButton.hidden = !editAllowed;
+      autoSizeButton.disabled = !canResize || !manualSize;
+      autoSizeButton.title = manualSize
+        ? "Fit monitor to the visible chats"
+        : "Monitor already follows the visible chats";
     }
 
     if (!canResize || !manualSize) {
@@ -1617,6 +1722,19 @@
     node.more.title = descriptor.kind === "manual" ? "Section options" : "Project options";
   }
 
+  function projectScopedDisplayTitle(chat, mode) {
+    const title = String(chat.displayTitle || chat.title || "ChatGPT").trim();
+    if (mode !== "project" || chat.alias || !chat.projectKey) return title;
+
+    const projectName = String(chat.projectName || "").trim();
+    if (!projectName) return title;
+
+    const escapedProjectName = projectName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const prefix = new RegExp("^" + escapedProjectName + "\\s*(?:[·•|:–—-])\\s*", "i");
+    const shortened = title.replace(prefix, "").trim();
+    return shortened || title;
+  }
+
   function projectDescriptors(visible) {
     const byProject = new Map();
     for (const chat of visible) {
@@ -1666,8 +1784,9 @@
     lockButton.setAttribute("aria-label", locked ? "Unlock layout" : "Lock layout");
     lockButton.classList.toggle("is-locked", locked);
     addSeparatorButton.hidden = mode !== "manual";
-    addSeparatorButton.disabled = locked;
-    addSeparatorButton.title = locked ? "Unlock layout to add a separator" : "Add separator";
+    addSeparatorButton.disabled = false;
+    addSeparatorButton.setAttribute("aria-disabled", locked ? "true" : "false");
+    addSeparatorButton.title = locked ? "Layout locked" : "Add separator";
     if (footCopy) {
       footCopy.textContent = locked
         ? "Layout locked"
@@ -1691,17 +1810,16 @@
         node.row.remove();
         rowNodes.delete(tabId);
         renderedStates.delete(tabId);
-      } else {
-        node.row.remove();
       }
     }
-    for (const node of separatorNodes.values()) node.row.remove();
     for (const zone of sectionDropNodes.values()) zone.remove();
     sectionDropNodes.clear();
 
+    const desiredRowIds = new Set();
     const desiredSeparatorIds = new Set();
 
     const appendChat = (chat, sectionId = "") => {
+      desiredRowIds.add(chat.tabId);
       const node = rowNodes.get(chat.tabId) || createRow(chat.tabId);
       node.chat = chat;
       node.row.dataset.chatKey = chat.chatKey;
@@ -1710,19 +1828,24 @@
       if (chat.url === location.href) node.row.classList.add("current");
       if (chat.pinned) node.row.classList.add("pinned");
 
-      const canDrag = !locked && mode !== "project";
+      const canDrag = !locked;
       node.copy.draggable = canDrag;
       node.copy.title = locked
         ? "Layout locked"
-        : canDrag
-          ? "Drag to reorder"
-          : "Chats stay inside their ChatGPT project";
+        : mode === "project"
+          ? "Drag to reorder within this project"
+          : "Drag to reorder";
       node.copy.setAttribute(
         "aria-label",
-        locked ? "Chat layout locked" : canDrag ? "Drag chat to reorder" : "Chat project grouping is automatic"
+        locked
+          ? "Chat layout locked"
+          : mode === "project"
+            ? "Drag chat to reorder within this project"
+            : "Drag chat to reorder"
       );
 
-      node.title.textContent = (chat.pinned ? "📌 " : "") + (chat.displayTitle || chat.title || "ChatGPT");
+      const visibleTitle = projectScopedDisplayTitle(chat, mode);
+      node.title.textContent = (chat.pinned ? "📌 " : "") + visibleTitle;
       node.meta.textContent = statusText(chat, now);
       node.meta.title = statusTitle(chat, now);
       node.dot.title = chat.state === "idle"
@@ -1733,7 +1856,7 @@
       node.dot.setAttribute("aria-label", stateName(chat.state));
       node.main.setAttribute(
         "aria-label",
-        (chat.displayTitle || chat.title || "ChatGPT") + ", " + node.meta.textContent
+        visibleTitle + ", " + node.meta.textContent
       );
 
       maybeFlash(node, chat);
@@ -1788,6 +1911,10 @@
       }
     } else {
       for (const chat of visible) appendChat(chat, "");
+    }
+
+    for (const [tabId, node] of rowNodes) {
+      if (!desiredRowIds.has(tabId)) node.row.remove();
     }
 
     for (const [id, node] of separatorNodes) {
@@ -1950,26 +2077,27 @@
     host.style.cssText =
       "all:initial;position:fixed;inset:0;z-index:2147483647;pointer-events:none;";
 
-    const shadow = host.attachShadow({ mode: "open" });
+    const shadow = host.attachShadow({ mode: "closed" });
     const style = document.createElement("style");
 
     style.textContent =
       ":host{all:initial}*{box-sizing:border-box}" +
       "#panel{position:fixed;display:flex;flex-direction:column;width:318px;max-height:min(480px,70vh);overflow:visible;pointer-events:auto;" +
       "font:13px/1.35 system-ui,-apple-system,'Segoe UI',sans-serif;color:#f5f7fa;background:#12171f;" +
-      "border:1px solid #303846;border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,.34)}" +
+      "border:1px solid #303846;border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,.34);opacity:var(--monitor-idle-opacity,1);transition:opacity .16s ease}" +
+      "#panel:hover,#panel:focus-within,#panel.hover-active,#panel.dragging,#panel.resizing{opacity:var(--monitor-active-opacity,1)}" +
       "#panel.dragging,#panel.resizing{user-select:none;box-shadow:0 20px 54px rgba(0,0,0,.42)}" +
-      ".head{height:46px;display:flex;align-items:center;gap:8px;padding:0 9px 0 12px;cursor:grab;" +
+      ".head{height:46px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 9px 0 12px;cursor:grab;" +
       "border-bottom:1px solid #29313d}.head:active{cursor:grabbing}" +
       ".brand{font-weight:750;letter-spacing:-.01em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.summary{display:flex;align-items:center;gap:5px;white-space:nowrap}" +
       ".summary[hidden]{display:none}.count-badge{width:22px;height:22px;display:grid;place-items:center;border-radius:50%;font-size:10px;font-weight:850;font-variant-numeric:tabular-nums;line-height:1;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}" +
       ".count-badge[hidden]{display:none}.count-working{background:rgba(99,230,215,.13);color:#63e6d7}.count-done{background:rgba(167,243,107,.13);color:#a7f36b}.count-attention{background:rgba(240,163,90,.14);color:#f0a35a}.count-pending{background:rgba(244,114,182,.13);color:#f472b6}" +
       ".add-separator{position:relative;width:26px;height:26px;flex:0 0 auto;border:0;border-radius:7px;background:transparent;color:#7f8b9b;cursor:pointer}.add-separator[hidden]{display:none}.add-separator:hover:not(:disabled){background:#202731;color:#d9e0e8}.add-separator:disabled{opacity:.28;cursor:default}" +
       ".add-separator::before{content:'';position:absolute;left:7px;right:7px;top:9px;height:1px;background:currentColor;box-shadow:0 5px 0 currentColor}.add-separator::after{content:'+';position:absolute;right:3px;bottom:2px;width:10px;height:10px;display:grid;place-items:center;border-radius:50%;background:#12171f;color:currentColor;font:800 9px/1 system-ui}" +
-      ".header-tool{width:26px;height:26px;flex:0 0 auto;border:0;border-radius:7px;background:transparent;color:#7f8b9b;display:grid;place-items:center;cursor:pointer;line-height:1}.header-tool:hover{background:#202731;color:#d9e0e8}.lock-button{font-size:13px}.lock-button.is-locked{color:#d6a25f}.undo-header{font:800 17px/1 system-ui;color:#74d8cc}.undo-header[hidden]{display:none}" +
+      ".header-tool{width:26px;height:26px;flex:0 0 auto;border:0;border-radius:7px;background:transparent;color:#7f8b9b;display:grid;place-items:center;cursor:pointer;line-height:1}.header-tool:hover{background:#202731;color:#d9e0e8}.lock-button{font-size:13px}.lock-button.is-locked{color:#d6a25f}.lock-button.lock-feedback{animation:lockshake .28s ease}.undo-header{font:800 17px/1 system-ui;color:#74d8cc}.undo-header[hidden]{display:none}" +
       ".collapse{width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:#aeb8c7;" +
       "font-size:18px;line-height:1;cursor:pointer}.collapse:hover{background:#202731;color:white}.layout-locked .head{cursor:default}" +
-      ".list{max-height:min(360px,58vh);min-height:0;overflow:auto;padding:7px}.manual-size{max-height:none}.manual-size .list{max-height:none;flex:1}.manual-size.is-empty .list{display:none}.manual-size.is-empty .empty{margin:auto 0}" +
+      ".list{min-height:0;overflow-y:auto;overflow-x:hidden;padding:7px}.manual-size{max-height:none}.manual-size .list{max-height:none;flex:1}.manual-size.is-empty .list{display:none}.manual-size.is-empty .empty{margin:auto 0}" +
       ".chat-row{position:relative;display:flex;align-items:center;gap:3px;border-radius:10px;background:transparent}" +
       ".chat-row:hover,.chat-row.current{background:#1a202a}.chat-row.drag-source,.section-separator.drag-source{opacity:.42}" +
       ".chat-row.drop-before::before,.chat-row.drop-after::after,.section-separator.drop-before::before,.section-separator.drop-after::after{content:'';position:absolute;left:7px;right:7px;height:2px;border-radius:999px;background:#63e6d7}" +
@@ -1999,9 +2127,9 @@
       "color:#d9e0e8;text-align:left;font:12px system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}" +
       ".menu-action:hover{background:#252d38}" +
       ".empty{padding:18px 14px 20px;color:#8e9bad;text-align:center;font-size:12px}" +
-      ".foot{min-height:35px;display:flex;align-items:center;justify-content:center;gap:8px;padding:7px 9px 8px 12px;color:#6f7c8e;text-align:center;font-size:10px;border-top:1px solid #29313d}" +
+      ".foot{min-height:35px;flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:8px;padding:7px 9px 8px 12px;color:#6f7c8e;text-align:center;font-size:10px;border-top:1px solid #29313d}" +
       ".foot-copy{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.version-label{flex:0 0 auto;color:#566274;font:600 9px/1 system-ui;font-variant-numeric:tabular-nums}.auto-size-button{display:inline-flex;align-items:center;flex:0 0 auto;height:22px;padding:0 7px;border:1px solid #354052;border-radius:7px;background:#171d26;color:#aeb8c7;font:600 10px system-ui,-apple-system,'Segoe UI',sans-serif;cursor:pointer}" +
-      ".auto-size-button:hover:not(:disabled){background:#252d38;color:#fff;border-color:#465267}.auto-size-button:disabled{opacity:.38;cursor:default}" +
+      ".auto-size-button[hidden]{display:none}.auto-size-button:hover:not(:disabled){background:#252d38;color:#fff;border-color:#465267}.auto-size-button:disabled{opacity:.38;cursor:default}" +
       "#panel.collapsed{width:215px}.collapsed .list,.collapsed .empty,.collapsed .foot,.collapsed .add-separator{display:none}" +
       ".collapsed .head{border-bottom:0;gap:5px}.collapsed .brand{font-size:0}.collapsed .brand::after{content:'Monitor';font-size:11px}.collapsed .summary{gap:3px}.collapsed .count-badge{width:18px;height:18px;font-size:9px}" +
       "#panel.compact{width:214px}#panel.compact.collapsed{width:214px}" +
@@ -2027,7 +2155,12 @@
       ":host([data-theme='light']) .empty{color:#748196}:host([data-theme='light']) .foot{color:#7c899b;border-top-color:#dce3ec}:host([data-theme='light']) .version-label{color:#99a4b2}" +
       ":host([data-theme='light']) .auto-size-button{border-color:#ccd5df;background:#f8fafc;color:#5c6a7c}:host([data-theme='light']) .auto-size-button:hover{background:#e9eff5;color:#182331;border-color:#b8c4d1}" +
       ":host([data-theme='light']) .resize-handle{background:linear-gradient(135deg,transparent 0 52%,#7d8998 53% 58%,transparent 59% 68%,#7d8998 69% 74%,transparent 75%)}" +
-      ".flash{animation:stateflash 1.2s ease-out 1}.no-animations .state-working .dot,.no-animations .state-pending .dot,.no-animations .flash{animation:none}:host([data-theme='light']) .flash{animation-name:stateflashlight}" +
+      ":host([data-theme='cozy']) *{font-family:'Trebuchet MS',system-ui,sans-serif}:host([data-theme='cozy']) #panel{color:#f5eadf;background:#2c2621;border-color:#5b4b3f;box-shadow:0 16px 44px rgba(30,18,10,.38)}:host([data-theme='cozy']) .head{border-bottom-color:#4a3d33}:host([data-theme='cozy']) .chat-row:hover,:host([data-theme='cozy']) .chat-row.current{background:#3a312a}:host([data-theme='cozy']) .separator-rule{background:#655347}:host([data-theme='cozy']) .separator-caption{color:#c0a992}:host([data-theme='cozy']) .more:hover,:host([data-theme='cozy']) .header-tool:hover,:host([data-theme='cozy']) .collapse:hover{background:#43382f;color:#fff4e9}:host([data-theme='cozy']) .foot{color:#b29b86;border-top-color:#4a3d33}:host([data-theme='cozy']) .floating-menu{border-color:#5b4b3f;background:#302821;box-shadow:0 10px 26px rgba(25,14,8,.36)}:host([data-theme='cozy']) .menu-action{color:#f0e2d4}:host([data-theme='cozy']) .menu-action:hover{background:#43382f}" +
+      ":host([data-theme='neon']) *{font-family:Consolas,'Courier New',monospace}:host([data-theme='neon']) #panel{color:#eaffff;background:#07101a;border-color:#24536c;box-shadow:0 0 0 1px rgba(0,245,212,.06),0 18px 46px rgba(0,0,0,.5)}:host([data-theme='neon']) .head{border-bottom-color:#173d52}:host([data-theme='neon']) .brand{color:#bffff8}:host([data-theme='neon']) .chat-row:hover,:host([data-theme='neon']) .chat-row.current{background:#0d1d2b}:host([data-theme='neon']) .separator-rule{background:#244b64}:host([data-theme='neon']) .separator-caption{color:#8edbd5}:host([data-theme='neon']) .more:hover,:host([data-theme='neon']) .header-tool:hover,:host([data-theme='neon']) .collapse:hover{background:#102737;color:#00f5d4}:host([data-theme='neon']) .lock-button.is-locked{color:#d08cff}:host([data-theme='neon']) .foot{color:#7299aa;border-top-color:#173d52}:host([data-theme='neon']) .auto-size-button{border-color:#24536c;background:#081722;color:#8edbd5}:host([data-theme='neon']) .auto-size-button:hover{background:#102737;color:#00f5d4}:host([data-theme='neon']) .floating-menu{border-color:#24536c;background:#07111b;box-shadow:0 0 24px rgba(0,245,212,.09)}:host([data-theme='neon']) .menu-action{color:#dffcff}:host([data-theme='neon']) .menu-action:hover{background:#102737;color:#00f5d4}" +
+      ":host([data-theme='minimal']) *{font-family:Arial,Helvetica,sans-serif}:host([data-theme='minimal']) #panel{color:#222;background:#fbfbfa;border-color:#d9d9d6;border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.12)}:host([data-theme='minimal']) .head{border-bottom-color:#e2e2df}:host([data-theme='minimal']) .count-badge{box-shadow:none}:host([data-theme='minimal']) .add-separator{color:#777}:host([data-theme='minimal']) .add-separator:hover:not(:disabled){background:#ececea;color:#222}:host([data-theme='minimal']) .add-separator::after{background:#fbfbfa}:host([data-theme='minimal']) .undo-header{color:#444}:host([data-theme='minimal']) .chat-row:hover,:host([data-theme='minimal']) .chat-row.current{background:#f0f0ed}:host([data-theme='minimal']) .separator-rule{background:#d3d3d0}:host([data-theme='minimal']) .separator-caption{color:#737373}:host([data-theme='minimal']) .separator-input{border-color:#ccccca;background:#fff;color:#222}:host([data-theme='minimal']) .separator-count{color:#888}:host([data-theme='minimal']) .section-dropzone{border-color:#ccccca;color:#888}:host([data-theme='minimal']) .section-dropzone.drop-section{border-color:#888;background:#f2f2ef;color:#444}:host([data-theme='minimal']) .more,:host([data-theme='minimal']) .header-tool,:host([data-theme='minimal']) .collapse{color:#6d6d6d}:host([data-theme='minimal']) .more:hover,:host([data-theme='minimal']) .header-tool:hover,:host([data-theme='minimal']) .collapse:hover{background:#ececea;color:#222}:host([data-theme='minimal']) .lock-button.is-locked{color:#444}:host([data-theme='minimal']) .meta{color:#777}:host([data-theme='minimal']) .pinned .chat-title{color:#111}:host([data-theme='minimal']) .empty{color:#777}:host([data-theme='minimal']) .foot{color:#777;border-top-color:#e2e2df}:host([data-theme='minimal']) .version-label{color:#999}:host([data-theme='minimal']) .auto-size-button{border-color:#d2d2cf;background:#fff;color:#555}:host([data-theme='minimal']) .auto-size-button:hover{background:#ececea;color:#222}:host([data-theme='minimal']) .resize-handle{background:linear-gradient(135deg,transparent 0 52%,#888 53% 58%,transparent 59% 68%,#888 69% 74%,transparent 75%)}:host([data-theme='minimal']) .floating-menu{border-color:#d9d9d6;background:#fff;box-shadow:0 10px 24px rgba(0,0,0,.12)}:host([data-theme='minimal']) .menu-action{color:#333}:host([data-theme='minimal']) .menu-action:hover{background:#efefed}" +
+      ".flash{animation:stateflash 1.2s ease-out 1}.no-animations .state-working .dot,.no-animations .state-pending .dot,.no-animations .flash,.no-animations .lock-button.lock-feedback{animation:none}:host([data-theme='light']) .flash{animation-name:stateflashlight}" +
+      "@keyframes lockshake{0%,100%{transform:translateX(0)}20%{transform:translateX(-2px)}40%{transform:translateX(2px)}60%{transform:translateX(-1.5px)}80%{transform:translateX(1.5px)}}" +
+      "@media (prefers-reduced-motion:reduce){.lock-button.lock-feedback{animation:none!important}}" +
       "@keyframes workingpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.52;transform:scale(.82)}}@keyframes pendingpulse{0%,100%{opacity:1;transform:scale(1);box-shadow:0 0 0 3px rgba(244,114,182,.08),0 0 9px rgba(244,114,182,.18)}50%{opacity:.62;transform:scale(.9);box-shadow:0 0 0 4px rgba(244,114,182,.05),0 0 13px rgba(244,114,182,.12)}}" +
       "@keyframes stateflash{0%{background:#2b3440}100%{background:transparent}}@keyframes stateflashlight{0%{background:#dce7f2}100%{background:transparent}}";
 
@@ -2127,11 +2260,74 @@
     floatingMenu.hidden = true;
 
     shadow.append(style, panel, floatingMenu);
+    shadow.addEventListener("pointerdown", (event) => {
+      lockedPointerGesture = null;
+      if (!layoutLocked() || !(event.target instanceof Element)) return;
+      const target = event.target;
+      if (target.closest(".lock-button,.collapse,.undo-header,.more,.floating-menu")) return;
+
+      if (target.closest(".copy")) {
+        lockedPointerGesture = {
+          pointerId: event.pointerId,
+          x: event.clientX,
+          y: event.clientY
+        };
+        return;
+      }
+
+      const blockedLayoutTarget =
+        target.closest(".section-separator,.add-separator,.resize-handle") ||
+        (target.closest(".head") && !target.closest("button"));
+
+      if (blockedLayoutTarget) signalLayoutLocked();
+    }, true);
+
+    shadow.addEventListener("pointermove", (event) => {
+      if (!layoutLocked() || !lockedPointerGesture ||
+          lockedPointerGesture.pointerId !== event.pointerId) return;
+      const dx = event.clientX - lockedPointerGesture.x;
+      const dy = event.clientY - lockedPointerGesture.y;
+      if (Math.hypot(dx, dy) < 5) return;
+      lockedPointerGesture = null;
+      signalLayoutLocked();
+    }, true);
+
+    const clearLockedPointerGesture = () => {
+      lockedPointerGesture = null;
+    };
+    shadow.addEventListener("pointerup", clearLockedPointerGesture, true);
+    shadow.addEventListener("pointercancel", clearLockedPointerGesture, true);
+
+    for (const eventType of [
+      "click", "contextmenu", "dblclick", "keydown",
+      "pointerdown", "pointermove", "pointerup",
+      "mousedown", "mousemove", "mouseup",
+      "dragstart", "dragover", "drop", "dragend"
+    ]) {
+      shadow.addEventListener(eventType, blockUntrustedEvent, true);
+    }
     document.documentElement.appendChild(host);
+
+    const setHoverFocusActive = (active) => {
+      panel.classList.toggle("hover-active", active);
+    };
+    panel.addEventListener("pointerenter", () => setHoverFocusActive(true));
+    panel.addEventListener("pointerleave", (event) => {
+      if (event.relatedTarget instanceof Node && floatingMenu?.contains(event.relatedTarget)) return;
+      setHoverFocusActive(false);
+    });
+    floatingMenu.addEventListener("pointerenter", () => setHoverFocusActive(true));
+    floatingMenu.addEventListener("pointerleave", (event) => {
+      if (event.relatedTarget instanceof Node && panel.contains(event.relatedTarget)) return;
+      setHoverFocusActive(false);
+    });
 
     addSeparatorButton.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (layoutLocked()) return;
+      if (layoutLocked()) {
+        signalLayoutLocked();
+        return;
+      }
       sendMessage({ type: "monitor-add-separator" }).then((response) => {
         if (response?.ok && response.undoId) showLayoutUndo("Separator added", response.undoId);
       });
@@ -2194,12 +2390,10 @@
 
       if (draggedToken.startsWith("p:")) {
         let projectId = "";
-        let visualTarget = rawTarget;
         let before = false;
 
         if (rawTarget.classList.contains("chat-row")) {
           projectId = rawTarget.dataset.sectionId || "";
-          visualTarget = separatorNodes.get(projectId)?.row || rawTarget;
           before = false;
         } else if (rawTarget.classList.contains("project-section")) {
           projectId = rawTarget.dataset.projectId || "";
@@ -2211,6 +2405,9 @@
 
         const targetToken = projectId ? "p:" + projectId : "";
         if (!targetToken || targetToken === draggedToken) return;
+
+        const visualTarget = projectDropVisualTarget(projectId, before);
+        if (!visualTarget) return;
 
         event.preventDefault();
         if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
@@ -2256,6 +2453,8 @@
       }
 
       if (!targetToken || targetToken === draggedToken) return;
+      if (!projectChatDropAllowed(draggedToken, targetToken)) return;
+
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
 
@@ -2355,6 +2554,12 @@
         setRestingState();
       }
       sendResponse({ ok: true });
+      return true;
+    }
+
+    if (message?.type === "monitor-layout-locked-feedback") {
+      if (layoutLocked()) signalLayoutLocked();
+      sendResponse({ ok: layoutLocked() });
       return true;
     }
 
@@ -2459,10 +2664,6 @@
   setInterval(() => {
     if (!document.hidden) updateTimeLabels();
   }, 1000);
-
-  setInterval(() => {
-    sendCurrentState();
-  }, HEARTBEAT_MS);
 
   (async () => {
     await loadSettings();

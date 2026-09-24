@@ -60,7 +60,7 @@ https://joelmomo.github.io/privacy/chatgpt-multichat-monitor/
 
 ### storage
 
-Stores extension settings and local-only monitor metadata: sound settings, compact mode, panel position, aliases, pins, hidden-chat state, manual chat order, recent activity metadata, update-check timestamps and one-time What's new acknowledgement state.
+Stores extension settings and local-only monitor metadata: sound settings, compact mode, panel position, aliases, pins, hidden-chat state, manual chat order, recent activity metadata, update-check timestamps and one-time What's new acknowledgement state. Active response timing metadata is kept only in extension session storage so reloads can restore an in-progress timer without turning it into long-term history.
 
 ### tabs
 

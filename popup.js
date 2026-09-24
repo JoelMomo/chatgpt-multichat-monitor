@@ -1,11 +1,13 @@
 const DEFAULTS = {
   monitorEnabled: true,
-  monitorShowIdle: false,
+  monitorShowIdle: true,
   monitorCompact: false,
   monitorAnimations: true,
   monitorOpacity: 1,
+  monitorHoverFocus: false,
   monitorTheme: "dark",
   monitorGroupMode: "project",
+  monitorLayoutLocked: false,
   monitorSoundsEnabled: true,
   monitorSoundDone: "pop",
   monitorSoundRetry: "potion",
@@ -21,6 +23,7 @@ const groupMode = document.getElementById("groupMode");
 const theme = document.getElementById("theme");
 const opacity = document.getElementById("opacity");
 const opacityValue = document.getElementById("opacityValue");
+const hoverFocus = document.getElementById("hoverFocus");
 const animations = document.getElementById("animations");
 
 const resetPosition = document.getElementById("resetPosition");
@@ -63,12 +66,32 @@ const SOUND_CONTROLS = {
 };
 
 function resolvedTheme(value) {
-  if (value === "light" || value === "dark") return value;
+  if (["light", "dark", "cozy", "neon", "minimal"].includes(value)) return value;
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
 function applyPopupTheme(value) {
   document.documentElement.dataset.theme = resolvedTheme(value);
+}
+
+function refreshLayoutResetUi(locked) {
+  const isLocked = locked === true;
+  for (const button of [resetPosition, resetSize, resetOrder, resetLayout]) {
+    button.disabled = false;
+    button.setAttribute("aria-disabled", isLocked ? "true" : "false");
+    button.title = isLocked ? "Layout locked — click to highlight the lock" : "";
+  }
+}
+
+async function runLayoutReset(button, fallback, type, successText) {
+  const response = await chrome.runtime.sendMessage({ type }).catch(() => null);
+  const result = response?.locked
+    ? "Locked"
+    : response?.ok
+      ? successText
+      : "Failed";
+  showButtonResult(button, result, fallback);
+  return response;
 }
 
 function updateOpacityValue(value) {
@@ -227,8 +250,10 @@ async function load() {
   theme.value = settings.monitorTheme || DEFAULTS.monitorTheme;
   opacity.value = settings.monitorOpacity ?? DEFAULTS.monitorOpacity;
   updateOpacityValue(opacity.value);
+  hoverFocus.checked = settings.monitorHoverFocus === true;
   applyPopupTheme(theme.value);
   animations.checked = settings.monitorAnimations !== false;
+  refreshLayoutResetUi(settings.monitorLayoutLocked === true);
 
   soundsEnabled.checked = settings.monitorSoundsEnabled !== false;
   soundDone.value = settings.monitorSoundDone || DEFAULTS.monitorSoundDone;
@@ -271,18 +296,20 @@ opacity.addEventListener("input", () => {
   chrome.storage.local.set({ monitorOpacity: value });
 });
 
+hoverFocus.addEventListener("change", () => {
+  chrome.storage.local.set({ monitorHoverFocus: hoverFocus.checked });
+});
+
 animations.addEventListener("change", () => {
   chrome.storage.local.set({ monitorAnimations: animations.checked });
 });
 
 resetPosition.addEventListener("click", async () => {
-  await chrome.storage.local.set({ monitorPosition: null });
-  showButtonResult(resetPosition, "Reset", "Reset position");
+  await runLayoutReset(resetPosition, "Reset position", "monitor-reset-position", "Reset");
 });
 
 resetSize.addEventListener("click", async () => {
-  await chrome.storage.local.set({ monitorSize: null });
-  showButtonResult(resetSize, "Auto", "Auto size");
+  await runLayoutReset(resetSize, "Auto size", "monitor-reset-size", "Auto");
 });
 
 restoreHidden.addEventListener("click", () => restoreHiddenChats(restoreHidden));
@@ -301,17 +328,11 @@ clearPending.addEventListener("click", () => {
 });
 
 resetOrder.addEventListener("click", async () => {
-  const response = await chrome.runtime.sendMessage({
-    type: "monitor-reset-chat-order"
-  }).catch(() => null);
-  showButtonResult(resetOrder, response?.ok ? "Reset" : "Failed", "Reset chat order");
+  await runLayoutReset(resetOrder, "Reset chat order", "monitor-reset-chat-order", "Reset");
 });
 
 resetLayout.addEventListener("click", async () => {
-  const response = await chrome.runtime.sendMessage({
-    type: "monitor-reset-layout"
-  }).catch(() => null);
-  showButtonResult(resetLayout, response?.ok ? "Reset" : "Failed", "Reset layout");
+  await runLayoutReset(resetLayout, "Reset layout", "monitor-reset-layout", "Reset");
 });
 
 soundsEnabled.addEventListener("change", () => {
@@ -360,6 +381,12 @@ dismissWhatsNew.addEventListener("click", async () => {
   }).catch(() => null);
 
   if (response?.ok) renderUpdateInfo(response);
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.monitorLayoutLocked) {
+    refreshLayoutResetUi(changes.monitorLayoutLocked.newValue === true);
+  }
 });
 
 window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {

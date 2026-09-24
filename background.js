@@ -7,6 +7,7 @@ const SECTIONS_KEY = "monitorSections";
 const SECTION_META_KEY = "monitorSectionMeta";
 const SECTION_UI_KEY = "monitorSectionUi";
 const GROUP_MODE_KEY = "monitorGroupMode";
+const LAYOUT_LOCK_KEY = "monitorLayoutLocked";
 const HISTORY_KEY = "monitorHistory";
 const ACTIVE_RUNS_KEY = "monitorActiveRuns";
 const HISTORY_LIMIT = 100;
@@ -72,6 +73,7 @@ let whatsNewState = null;
 let initPromise = null;
 let updateCheckPromise = null;
 let lastAudioRequestAt = 0;
+let offscreenCreatePromise = null;
 const pendingDoneSoundTimers = new Map();
 const layoutUndos = new Map();
 
@@ -91,24 +93,50 @@ function chatKeyFromUrl(url, tabId) {
   return "tab:" + String(tabId ?? "unknown");
 }
 
-function activeRunFor(chatKey) {
-  const run = activeRuns[chatKey];
+function activeRunKey(tabId) {
+  return "tab:" + String(tabId ?? "unknown");
+}
+
+function activeRunForTab(tabId, chatKey = "") {
+  const key = activeRunKey(tabId);
+  const run = activeRuns[key];
   if (!run || typeof run !== "object") return null;
+
   const startedAt = Number(run.startedAt);
   const updatedAt = Number(run.updatedAt);
   if (!Number.isFinite(startedAt) || startedAt <= 0 ||
       !Number.isFinite(updatedAt) ||
       Date.now() - updatedAt > ACTIVE_RUN_MAX_AGE_MS) {
-    if (activeRuns[chatKey]) {
-      delete activeRuns[chatKey];
-      queueActiveRunsPersist();
-    }
+    delete activeRuns[key];
+    activeRunLastPersistedAt.delete(key);
+    queueActiveRunsPersist();
     return null;
   }
+
+  let runChatKey = typeof run.chatKey === "string" && run.chatKey
+    ? run.chatKey
+    : key;
+
+  if (chatKey && runChatKey !== chatKey) {
+    const canPromoteTemporaryIdentity =
+      runChatKey === key &&
+      chatKey.startsWith("conversation:");
+
+    if (!canPromoteTemporaryIdentity) return null;
+
+    runChatKey = chatKey;
+    run.chatKey = chatKey;
+    queueActiveRunsPersist();
+  }
+
   return {
+    tabId: Number.isInteger(Number(run.tabId)) ? Number(run.tabId) : Number(tabId),
+    chatKey: runChatKey,
     startedAt,
     workPhase: String(run.workPhase || ""),
-    phaseStartedAt: Number.isFinite(Number(run.phaseStartedAt))
+    phaseStartedAt: run.phaseStartedAt != null &&
+      Number.isFinite(Number(run.phaseStartedAt)) &&
+      Number(run.phaseStartedAt) > 0
       ? Number(run.phaseStartedAt)
       : null,
     updatedAt
@@ -119,33 +147,38 @@ function queueActiveRunsPersist() {
   const snapshot = JSON.parse(JSON.stringify(activeRuns));
   activeRunsWritePromise = activeRunsWritePromise
     .catch(() => {})
-    .then(() => chrome.storage.local.set({ [ACTIVE_RUNS_KEY]: snapshot }));
+    .then(() => chrome.storage.session.set({ [ACTIVE_RUNS_KEY]: snapshot }));
   return activeRunsWritePromise;
 }
 
-function clearActiveRun(chatKey) {
-  if (!chatKey || !activeRuns[chatKey]) return false;
-  delete activeRuns[chatKey];
-  activeRunLastPersistedAt.delete(chatKey);
+function clearActiveRunForTab(tabId) {
+  const key = activeRunKey(tabId);
+  if (!activeRuns[key]) return false;
+  delete activeRuns[key];
+  activeRunLastPersistedAt.delete(key);
   return true;
 }
 
 async function ensureInitialized() {
   if (initPromise) return initPromise;
   initPromise = (async () => {
-    const stored = await chrome.storage.local.get({
-      [PREFS_KEY]: {},
-      [ORDER_KEY]: [],
-      [PROJECT_ORDER_KEY]: [],
-      [SECTIONS_KEY]: [],
-      [SECTION_META_KEY]: {},
-      [SECTION_UI_KEY]: {},
-      [GROUP_MODE_KEY]: GROUP_MODE_DEFAULT,
-      [HISTORY_KEY]: [],
-      [ACTIVE_RUNS_KEY]: {},
-      [UPDATE_STATE_KEY]: null,
-      [WHATS_NEW_KEY]: null
-    });
+    const [stored, sessionStored] = await Promise.all([
+      chrome.storage.local.get({
+        [PREFS_KEY]: {},
+        [ORDER_KEY]: [],
+        [PROJECT_ORDER_KEY]: [],
+        [SECTIONS_KEY]: [],
+        [SECTION_META_KEY]: {},
+        [SECTION_UI_KEY]: {},
+        [GROUP_MODE_KEY]: GROUP_MODE_DEFAULT,
+        [HISTORY_KEY]: [],
+        [UPDATE_STATE_KEY]: null,
+        [WHATS_NEW_KEY]: null
+      }),
+      chrome.storage.session.get({
+        [ACTIVE_RUNS_KEY]: {}
+      })
+    ]);
     chatPrefs = stored[PREFS_KEY] && typeof stored[PREFS_KEY] === "object"
       ? stored[PREFS_KEY]
       : {};
@@ -174,21 +207,31 @@ async function ensureInitialized() {
 
     const activeRunCutoff = Date.now() - ACTIVE_RUN_MAX_AGE_MS;
     activeRuns = {};
-    if (stored[ACTIVE_RUNS_KEY] && typeof stored[ACTIVE_RUNS_KEY] === "object") {
-      for (const [key, value] of Object.entries(stored[ACTIVE_RUNS_KEY])) {
-        if (!key || !value || typeof value !== "object") continue;
+    if (sessionStored[ACTIVE_RUNS_KEY] && typeof sessionStored[ACTIVE_RUNS_KEY] === "object") {
+      for (const [key, value] of Object.entries(sessionStored[ACTIVE_RUNS_KEY])) {
+        if (!key.startsWith("tab:") || !value || typeof value !== "object") continue;
+        const tabId = Number.isInteger(Number(value.tabId))
+          ? Number(value.tabId)
+          : Number(key.slice(4));
         const startedAt = Number(value.startedAt);
         const updatedAt = Number(value.updatedAt);
-        if (!Number.isFinite(startedAt) || startedAt <= 0 ||
+        if (!Number.isInteger(tabId) ||
+            !Number.isFinite(startedAt) || startedAt <= 0 ||
             !Number.isFinite(updatedAt) || updatedAt < activeRunCutoff) {
           continue;
         }
         activeRuns[key] = {
+          tabId,
+          chatKey: typeof value.chatKey === "string" && value.chatKey
+            ? value.chatKey
+            : key,
           startedAt,
           workPhase: typeof value.workPhase === "string"
             ? value.workPhase.trim().replace(/\s+/g, " ").slice(0, 48)
             : "",
-          phaseStartedAt: Number.isFinite(Number(value.phaseStartedAt))
+          phaseStartedAt: value.phaseStartedAt != null &&
+            Number.isFinite(Number(value.phaseStartedAt)) &&
+            Number(value.phaseStartedAt) > 0
             ? Number(value.phaseStartedAt)
             : null,
           updatedAt
@@ -394,6 +437,43 @@ async function dismissWhatsNew(version) {
   return true;
 }
 
+async function layoutLocked() {
+  const stored = await chrome.storage.local.get({ [LAYOUT_LOCK_KEY]: false });
+  return stored[LAYOUT_LOCK_KEY] === true;
+}
+
+async function migrateTemporaryChatIdentity(tabId, oldKey, newKey) {
+  const temporaryKey = activeRunKey(tabId);
+  if (oldKey !== temporaryKey || !newKey.startsWith("conversation:")) return false;
+
+  let localChanged = false;
+  const oldPrefs = chatPrefs[oldKey];
+  if (oldPrefs && typeof oldPrefs === "object") {
+    chatPrefs[newKey] = { ...oldPrefs, ...prefsFor(newKey) };
+    delete chatPrefs[oldKey];
+    localChanged = true;
+  }
+
+  if (chatOrder.includes(oldKey)) {
+    chatOrder = [...new Set(chatOrder.map((key) => key === oldKey ? newKey : key))].slice(0, 200);
+    localChanged = true;
+  }
+
+  const run = activeRuns[temporaryKey];
+  if (run && typeof run === "object") {
+    run.chatKey = newKey;
+    queueActiveRunsPersist();
+  }
+
+  if (localChanged) {
+    await chrome.storage.local.set({
+      [PREFS_KEY]: chatPrefs,
+      [ORDER_KEY]: chatOrder
+    });
+  }
+  return true;
+}
+
 function prefsFor(key) {
   const prefs = chatPrefs[key];
   return prefs && typeof prefs === "object" ? prefs : {};
@@ -485,7 +565,7 @@ function snapshot() {
 
       const aManual = manualIndex.has(a.chatKey) ? manualIndex.get(a.chatKey) : null;
       const bManual = manualIndex.has(b.chatKey) ? manualIndex.get(b.chatKey) : null;
-      if (!projectGrouped && !segmented) {
+      if ((!segmented && !projectGrouped) || projectGrouped) {
         if (aManual !== null && bManual !== null && aManual !== bManual) return aManual - bManual;
         if (aManual !== null && bManual === null) return -1;
         if (aManual === null && bManual !== null) return 1;
@@ -531,7 +611,6 @@ function recordHistory(chat, previousState) {
       chat.state === "draft") return;
   history.unshift({
     ts: Date.now(),
-    chatKey: chat.chatKey,
     title: decorate(chat).displayTitle,
     state: chat.state
   });
@@ -569,13 +648,24 @@ async function ensureOffscreen() {
     exists = contexts.length > 0;
   }
 
-  if (!exists) {
-    await chrome.offscreen.createDocument({
+  if (!exists && !offscreenCreatePromise) {
+    offscreenCreatePromise = chrome.offscreen.createDocument({
       url: "offscreen.html",
       reasons: ["AUDIO_PLAYBACK"],
       justification: "Play a local sound when a monitored ChatGPT state changes."
+    }).catch(async (error) => {
+      const nowExists = chrome.offscreen.hasDocument
+        ? await chrome.offscreen.hasDocument()
+        : (await chrome.runtime.getContexts({
+            contextTypes: ["OFFSCREEN_DOCUMENT"]
+          })).length > 0;
+      if (!nowExists) throw error;
+    }).finally(() => {
+      offscreenCreatePromise = null;
     });
   }
+
+  if (offscreenCreatePromise) await offscreenCreatePromise;
 }
 
 async function playSound(sound, volume) {
@@ -690,7 +780,8 @@ function upsertState(payload, tab) {
   const state = payload.state || "idle";
   const chatKey = chatKeyFromUrl(payload.url || tab.url, tab.id);
   const sameChat = previous.chatKey === chatKey;
-  const persistedRun = activeRunFor(chatKey);
+  const runKey = activeRunKey(tab.id);
+  const persistedRun = activeRunForTab(tab.id, chatKey);
   let activeRunsChanged = false;
 
   const payloadStartedAt = Number(payload.startedAt);
@@ -736,33 +827,38 @@ function upsertState(payload, tab) {
     }
 
     const nextRun = {
+      tabId: tab.id,
+      chatKey,
       startedAt,
       workPhase,
       phaseStartedAt,
       updatedAt: now
     };
-    const currentRun = activeRuns[chatKey];
+    const currentRun = activeRuns[runKey];
     const runFieldsChanged = !currentRun ||
       currentRun.startedAt !== nextRun.startedAt ||
       currentRun.workPhase !== nextRun.workPhase ||
       currentRun.phaseStartedAt !== nextRun.phaseStartedAt;
-    const persistenceDue = now - (activeRunLastPersistedAt.get(chatKey) || 0) >= ACTIVE_RUN_PERSIST_INTERVAL_MS;
+    const persistenceDue = now - (activeRunLastPersistedAt.get(runKey) || 0) >= ACTIVE_RUN_PERSIST_INTERVAL_MS;
 
-    activeRuns[chatKey] = nextRun;
+    activeRuns[runKey] = nextRun;
     if (runFieldsChanged || persistenceDue) {
-      activeRunLastPersistedAt.set(chatKey, now);
+      activeRunLastPersistedAt.set(runKey, now);
       activeRunsChanged = true;
     }
   } else {
-    if (clearActiveRun(chatKey)) activeRunsChanged = true;
+    if (state !== "draft" && clearActiveRunForTab(tab.id)) activeRunsChanged = true;
     workPhase = "";
     phaseStartedAt = null;
 
     if (["finished", "interrupted", "retry", "attention", "error"].includes(state) && !finishedAt) {
       finishedAt = now;
     }
-    if (state === "idle" || state === "draft") {
+    if (state === "idle") {
       startedAt = null;
+      finishedAt = null;
+    } else if (state === "draft") {
+      startedAt = persistedRun?.startedAt ?? null;
       finishedAt = null;
     }
   }
@@ -794,6 +890,21 @@ function upsertState(payload, tab) {
     projectName
   };
 
+  const snapshotChanged = !hadPrevious || [
+    "windowId",
+    "chatKey",
+    "title",
+    "url",
+    "state",
+    "startedAt",
+    "finishedAt",
+    "workPhase",
+    "phaseStartedAt",
+    "projectKnown",
+    "projectKey",
+    "projectName"
+  ].some((key) => previous[key] !== next[key]);
+
   chats.set(tab.id, next);
   if (hadPrevious) {
     recordHistory(next, previous.state);
@@ -803,7 +914,7 @@ function upsertState(payload, tab) {
   }
 
   if (activeRunsChanged) queueActiveRunsPersist();
-  return activeRunsChanged;
+  return snapshotChanged;
 }
 
 async function broadcast() {
@@ -845,24 +956,50 @@ async function rebuildRegistry() {
     }
   }
 
+  let transientPrefsChanged = false;
+  for (const key of Object.keys(chatPrefs)) {
+    const match = key.match(/^tab:(\d+)$/);
+    if (match && !openIds.has(Number(match[1]))) {
+      delete chatPrefs[key];
+      transientPrefsChanged = true;
+    }
+  }
+
+  const filteredOrder = chatOrder.filter((key) => {
+    const match = key.match(/^tab:(\d+)$/);
+    return !match || openIds.has(Number(match[1]));
+  });
+  if (filteredOrder.length !== chatOrder.length) {
+    chatOrder = filteredOrder;
+    transientPrefsChanged = true;
+  }
+
+  if (transientPrefsChanged) {
+    await chrome.storage.local.set({
+      [PREFS_KEY]: chatPrefs,
+      [ORDER_KEY]: chatOrder
+    });
+  }
+
+  let prunedActiveRun = false;
+  for (const [key, run] of Object.entries(activeRuns)) {
+    const ownerTabId = Number(run?.tabId ?? key.slice(4));
+    if (!openIds.has(ownerTabId)) {
+      delete activeRuns[key];
+      activeRunLastPersistedAt.delete(key);
+      prunedActiveRun = true;
+    }
+  }
+  if (prunedActiveRun) queueActiveRunsPersist();
+
   await Promise.allSettled(tabs.map(async (tab) => {
     if (!Number.isInteger(tab.id)) return;
 
     if (tab.discarded) {
-      const chatKey = chatKeyFromUrl(tab.url, tab.id);
-      const run = activeRunFor(chatKey);
-      if (run) {
-        upsertState({
-          state: "working",
-          title: tab.title,
-          url: tab.url,
-          startedAt: run.startedAt,
-          workPhase: run.workPhase,
-          phaseStartedAt: run.phaseStartedAt
-        }, tab);
-      } else {
-        upsertState({ state: "idle", title: tab.title, url: tab.url }, tab);
+      if (clearActiveRunForTab(tab.id)) {
+        await queueActiveRunsPersist();
       }
+      upsertState({ state: "idle", title: tab.title, url: tab.url }, tab);
       return;
     }
 
@@ -872,7 +1009,7 @@ async function rebuildRegistry() {
     } catch {
       if (!chats.has(tab.id)) {
         const chatKey = chatKeyFromUrl(tab.url, tab.id);
-        const run = activeRunFor(chatKey);
+        const run = activeRunForTab(tab.id, chatKey);
         if (run) {
           upsertState({
             state: "working",
@@ -913,8 +1050,13 @@ async function acknowledgeFinishedTab(tabId) {
 }
 
 async function activateTab(tabId) {
+  await ensureInitialized();
+  const chat = chats.get(tabId);
+  if (!chat) return false;
+
   try {
     const tab = await chrome.tabs.get(tabId);
+    if (!String(tab.url || "").startsWith("https://chatgpt.com/")) return false;
     await chrome.windows.update(tab.windowId, { focused: true });
     await chrome.tabs.update(tabId, { active: true });
     await acknowledgeFinishedTab(tabId);
@@ -927,6 +1069,7 @@ async function activateTab(tabId) {
 async function setChatPreference(chatKey, patch) {
   await ensureInitialized();
   if (!chatKey || typeof patch !== "object" || patch === null) return false;
+  if (Object.prototype.hasOwnProperty.call(patch, "section") && await layoutLocked()) return false;
   const current = prefsFor(chatKey);
   const next = { ...current };
 
@@ -976,6 +1119,7 @@ async function clearChatPreferenceField(field) {
 
 async function setChatOrder(keys) {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const before = captureLayoutState();
   const ordered = [...new Set(
     (Array.isArray(keys) ? keys : [])
@@ -992,15 +1136,31 @@ async function setChatOrder(keys) {
   return { ok: true, undoId: registerLayoutUndo(before) };
 }
 
+async function resetMonitorPosition() {
+  await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
+  await chrome.storage.local.set({ monitorPosition: null });
+  return { ok: true };
+}
+
+async function resetMonitorSize() {
+  await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
+  await chrome.storage.local.set({ monitorSize: null });
+  return { ok: true };
+}
+
 async function resetChatOrder() {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   chatOrder = [];
   await chrome.storage.local.set({ [ORDER_KEY]: [] });
-  return true;
+  return { ok: true };
 }
 
 async function setProjectOrder(keys) {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const before = captureLayoutState();
   const ordered = [...new Set(
     (Array.isArray(keys) ? keys : [])
@@ -1045,6 +1205,7 @@ function registerLayoutUndo(state) {
 
 async function restoreLayoutUndo(id) {
   await ensureInitialized();
+  if (await layoutLocked()) return false;
   const entry = layoutUndos.get(id);
   if (!entry) return false;
   clearTimeout(entry.timer);
@@ -1094,6 +1255,7 @@ async function restoreLayoutUndo(id) {
 
 async function resetLayout() {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const before = captureLayoutState();
   sections = [];
   chatOrder = [];
@@ -1126,6 +1288,7 @@ function createSeparatorId() {
 
 async function addSeparator() {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const before = captureLayoutState();
   const id = createSeparatorId();
   sections = [...sections, id].slice(0, 40);
@@ -1139,6 +1302,7 @@ async function addSeparator() {
 
 async function removeSeparator(id) {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const index = sections.indexOf(id);
   if (index < 0) return { ok: false };
   const before = captureLayoutState();
@@ -1167,6 +1331,7 @@ async function removeSeparator(id) {
 
 async function setSeparatorMeta(id, patch) {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   if (!sections.includes(id) || !patch || typeof patch !== "object") return { ok: false };
   const before = captureLayoutState();
   const current = sectionMeta[id] && typeof sectionMeta[id] === "object" ? sectionMeta[id] : {};
@@ -1185,6 +1350,7 @@ async function setSeparatorMeta(id, patch) {
 
 async function setSectionCollapsed(sectionKey, collapsed) {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const key = String(sectionKey || "").slice(0, 220);
   if (!key || (!key.startsWith("manual:") && !key.startsWith("project:"))) return { ok: false };
   const before = captureLayoutState();
@@ -1199,6 +1365,7 @@ async function setSectionCollapsed(sectionKey, collapsed) {
 
 async function moveSeparator(id, direction) {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const index = sections.indexOf(id);
   const nextIndex = index + Number(direction || 0);
   if (index < 0 || nextIndex < 0 || nextIndex >= sections.length) return { ok: false };
@@ -1213,6 +1380,7 @@ async function moveSeparator(id, direction) {
 
 async function setLayout(tokens) {
   await ensureInitialized();
+  if (await layoutLocked()) return { ok: false, locked: true };
   const before = captureLayoutState();
   const input = Array.isArray(tokens) ? tokens : [];
   const validSections = new Set(sections);
@@ -1278,6 +1446,30 @@ async function cycleChat(states) {
   return activateTab(next.tabId);
 }
 
+async function signalLayoutLockedInActiveTab() {
+  let tabs = [];
+  try {
+    tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  } catch {
+    return false;
+  }
+
+  const tab = tabs.find((item) =>
+    Number.isInteger(item.id) &&
+    String(item.url || "").startsWith("https://chatgpt.com/")
+  );
+  if (!tab) return false;
+
+  try {
+    await chrome.tabs.sendMessage(tab.id, {
+      type: "monitor-layout-locked-feedback"
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function toggleMonitorInActiveTab() {
   let tabs = [];
   try {
@@ -1322,7 +1514,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "monitor-state") {
     ensureInitialized()
       .then(async () => {
-        upsertState(message, sender.tab);
+        const snapshotChanged = upsertState(message, sender.tab);
 
         if (message.state === "finished" &&
             sender.tab?.active &&
@@ -1336,7 +1528,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           } catch {}
         }
 
-        await broadcast();
+        if (snapshotChanged) await broadcast();
       })
       .then(() => sendResponse({ ok: true }))
       .catch(() => sendResponse({ ok: false }));
@@ -1346,8 +1538,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "monitor-get-active-run") {
     ensureInitialized()
       .then(() => {
-        const chatKey = chatKeyFromUrl(message.url || sender.tab?.url || "", sender.tab?.id);
-        sendResponse({ ok: true, chatKey, run: activeRunFor(chatKey) });
+        const tabId = sender.tab?.id;
+        const chatKey = chatKeyFromUrl(message.url || sender.tab?.url || "", tabId);
+        sendResponse({ ok: true, chatKey, run: Number.isInteger(tabId) ? activeRunForTab(tabId, chatKey) : null });
       })
       .catch(() => sendResponse({ ok: false, run: null }));
     return true;
@@ -1357,6 +1550,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     rebuildRegistry()
       .then(() => sendResponse({ chats: snapshot(), separators: separatorSnapshot() }))
       .catch(() => sendResponse({ chats: snapshot(), separators: separatorSnapshot() }));
+    return true;
+  }
+
+  if (message?.type === "monitor-signal-layout-locked") {
+    signalLayoutLockedInActiveTab()
+      .then((ok) => sendResponse({ ok }))
+      .catch(() => sendResponse({ ok: false }));
     return true;
   }
 
@@ -1451,16 +1651,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "monitor-reset-position") {
+    resetMonitorPosition()
+      .then(async (result) => {
+        if (result?.locked) await signalLayoutLockedInActiveTab();
+        sendResponse(result);
+      })
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "monitor-reset-size") {
+    resetMonitorSize()
+      .then(async (result) => {
+        if (result?.locked) await signalLayoutLockedInActiveTab();
+        sendResponse(result);
+      })
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
   if (message?.type === "monitor-reset-layout") {
     resetLayout()
-      .then((result) => broadcast().then(() => sendResponse(result)))
+      .then(async (result) => {
+        if (result?.locked) await signalLayoutLockedInActiveTab();
+        else if (result?.ok) await broadcast();
+        sendResponse(result);
+      })
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
 
   if (message?.type === "monitor-reset-chat-order") {
     resetChatOrder()
-      .then((ok) => broadcast().then(() => sendResponse({ ok })))
+      .then(async (result) => {
+        if (result?.locked) await signalLayoutLockedInActiveTab();
+        else if (result?.ok) await broadcast();
+        sendResponse(result);
+      })
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
@@ -1577,24 +1805,21 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
     .catch(() => {});
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => {
+async function handleTabRemoved(tabId) {
+  await ensureInitialized();
   cancelPendingDoneSound(tabId);
-  const removed = chats.get(tabId);
-  if (!chats.delete(tabId)) return;
+  const hadChat = chats.delete(tabId);
+  const hadRun = clearActiveRunForTab(tabId);
+  if (hadRun) await queueActiveRunsPersist();
+  if (hadChat || hadRun) await broadcast();
+}
 
-  if (removed?.chatKey) {
-    const stillOpen = [...chats.values()].some((chat) =>
-      chat.chatKey === removed.chatKey && chat.state === "working"
-    );
-    if (!stillOpen && clearActiveRun(removed.chatKey)) {
-      queueActiveRunsPersist().catch(() => {});
-    }
-  }
-
-  broadcast().catch(() => {});
+chrome.tabs.onRemoved.addListener((tabId) => {
+  handleTabRemoved(tabId).catch(() => {});
 });
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+async function handleTabUpdated(tabId, changeInfo, tab) {
+  await ensureInitialized();
   const isLoading = changeInfo.status === "loading";
   const discardedNow = changeInfo.discarded === true;
 
@@ -1604,26 +1829,53 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
   if (changeInfo.url && !changeInfo.url.startsWith("https://chatgpt.com/")) {
     cancelPendingDoneSound(tabId);
-    if (chats.delete(tabId)) broadcast().catch(() => {});
+    const hadChat = chats.delete(tabId);
+    const hadRun = clearActiveRunForTab(tabId);
+    if (hadRun) await queueActiveRunsPersist();
+    if (hadChat || hadRun) await broadcast();
     return;
   }
 
   const previous = chats.get(tabId);
   if (!previous) return;
 
-  if (discardedNow || isLoading) {
-    const nextUrl = changeInfo.url || tab.url || previous.url;
-    const nextChatKey = chatKeyFromUrl(nextUrl, tabId);
+  const nextUrl = changeInfo.url || tab.url || previous.url;
+  const nextChatKey = chatKeyFromUrl(nextUrl, tabId);
 
-    if (nextChatKey === previous.chatKey) {
+  if (discardedNow) {
+    if (clearActiveRunForTab(tabId)) await queueActiveRunsPersist();
+    upsertState({
+      state: "idle",
+      title: changeInfo.title || tab.title || previous.title,
+      url: nextUrl
+    }, tab);
+    await broadcast();
+    return;
+  }
+
+  if (nextChatKey !== previous.chatKey) {
+    const migrated = await migrateTemporaryChatIdentity(
+      tabId,
+      previous.chatKey,
+      nextChatKey
+    );
+
+    if (migrated) {
+      const run = activeRuns[activeRunKey(tabId)];
+      if (run) {
+        run.chatKey = nextChatKey;
+        await queueActiveRunsPersist();
+      }
       chats.set(tabId, {
         ...previous,
+        chatKey: nextChatKey,
         windowId: tab.windowId,
         title: cleanTitle(changeInfo.title || tab.title || previous.title),
-        url: nextUrl
+        url: nextUrl,
+        updatedAt: Date.now()
       });
     } else {
-      if (clearActiveRun(previous.chatKey)) queueActiveRunsPersist().catch(() => {});
+      if (clearActiveRunForTab(tabId)) await queueActiveRunsPersist();
       upsertState({
         state: "idle",
         title: changeInfo.title || tab.title || previous.title,
@@ -1631,19 +1883,22 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       }, tab);
     }
 
-    broadcast().catch(() => {});
+    await broadcast();
     return;
   }
 
-  const nextUrl = changeInfo.url || tab.url || previous.url;
   chats.set(tabId, {
     ...previous,
-    chatKey: chatKeyFromUrl(nextUrl, tabId),
+    windowId: tab.windowId,
     title: cleanTitle(changeInfo.title || tab.title || previous.title),
     url: nextUrl,
-    updatedAt: Date.now()
+    updatedAt: isLoading || discardedNow ? previous.updatedAt : Date.now()
   });
-  broadcast().catch(() => {});
+  await broadcast();
+}
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  handleTabUpdated(tabId, changeInfo, tab).catch(() => {});
 });
 
 chrome.runtime.onInstalled.addListener((details) => {
@@ -1667,7 +1922,7 @@ chrome.runtime.onInstalled.addListener((details) => {
       }
     }
 
-    await chrome.storage.local.remove("monitorDoneVisibilityMs");
+    await chrome.storage.local.remove(["monitorDoneVisibilityMs", ACTIVE_RUNS_KEY]);
     await injectIntoOpenTabs();
     await checkForUpdates();
   })().catch(() => {});
@@ -1675,14 +1930,16 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.runtime.onStartup.addListener(() => {
   (async () => {
-    await injectIntoOpenTabs();
+    await rebuildRegistry();
+    await updateBadge();
     await checkForUpdates();
   })().catch(() => {});
 });
 
 ensureInitialized()
   .then(async () => {
-    await injectIntoOpenTabs();
+    await rebuildRegistry();
+    await updateBadge();
     await checkForUpdates();
   })
   .catch(() => {});
