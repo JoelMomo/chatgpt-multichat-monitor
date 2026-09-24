@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased - 0.4.0
+## Unreleased
+
+- Fixed registry rebuilds that could temporarily omit background ChatGPT tabs while their content scripts were still initializing. Open tabs now receive provisional rows immediately, preserving persisted Working runs until their live state is available.
+
+## 0.4.0 - 2026-09-24
 
 - Added persistent panel resizing from a discreet bottom-right handle, with viewport clamping and a **Reset size** control.
 - Added an **Opacity** slider in the popup, adjustable from 35% to 100% and applied live to the floating monitor.

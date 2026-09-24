@@ -939,6 +939,30 @@ async function broadcast() {
   await updateBadge();
 }
 
+function seedTabStateFromMetadata(tab) {
+  if (!tab || !Number.isInteger(tab.id)) return false;
+
+  const chatKey = chatKeyFromUrl(tab.url, tab.id);
+  const run = activeRunForTab(tab.id, chatKey);
+
+  if (run) {
+    return upsertState({
+      state: "working",
+      title: tab.title,
+      url: tab.url,
+      startedAt: run.startedAt,
+      workPhase: run.workPhase,
+      phaseStartedAt: run.phaseStartedAt
+    }, tab);
+  }
+
+  return upsertState({
+    state: "idle",
+    title: tab.title,
+    url: tab.url
+  }, tab);
+}
+
 async function rebuildRegistry() {
   await ensureInitialized();
   let tabs = [];
@@ -1005,24 +1029,13 @@ async function rebuildRegistry() {
 
     try {
       const local = await chrome.tabs.sendMessage(tab.id, { type: "monitor-get-local-state" });
-      if (local && local.initializing !== true) upsertState(local, tab);
-    } catch {
-      if (!chats.has(tab.id)) {
-        const chatKey = chatKeyFromUrl(tab.url, tab.id);
-        const run = activeRunForTab(tab.id, chatKey);
-        if (run) {
-          upsertState({
-            state: "working",
-            title: tab.title,
-            url: tab.url,
-            startedAt: run.startedAt,
-            workPhase: run.workPhase,
-            phaseStartedAt: run.phaseStartedAt
-          }, tab);
-        } else {
-          upsertState({ state: "idle", title: tab.title, url: tab.url }, tab);
-        }
+      if (local && local.initializing !== true) {
+        upsertState(local, tab);
+      } else if (!chats.has(tab.id)) {
+        seedTabStateFromMetadata(tab);
       }
+    } catch {
+      if (!chats.has(tab.id)) seedTabStateFromMetadata(tab);
     }
   }));
 }
@@ -1837,7 +1850,21 @@ async function handleTabUpdated(tabId, changeInfo, tab) {
   }
 
   const previous = chats.get(tabId);
-  if (!previous) return;
+  if (!previous) {
+    const nextUrl = changeInfo.url || tab.url || "";
+    if (!nextUrl.startsWith("https://chatgpt.com/")) return;
+
+    if (discardedNow && clearActiveRunForTab(tabId)) {
+      await queueActiveRunsPersist();
+    }
+    seedTabStateFromMetadata({
+      ...tab,
+      url: nextUrl,
+      title: changeInfo.title || tab.title
+    });
+    await broadcast();
+    return;
+  }
 
   const nextUrl = changeInfo.url || tab.url || previous.url;
   const nextChatKey = chatKeyFromUrl(nextUrl, tabId);

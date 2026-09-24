@@ -329,6 +329,42 @@ test("registry rebuild prunes orphan temporary tab preferences", async () => {
   assert.equal(api.prefsFor("conversation:keep").alias, "Keep");
 });
 
+
+test("registry rebuild keeps initializing ChatGPT tabs visible provisionally", async () => {
+  const now = Date.now();
+  const tabs = [
+    { id: 101, windowId: 1, url: "https://chatgpt.com/c/first", title: "First", discarded: false },
+    { id: 102, windowId: 1, url: "https://chatgpt.com/c/second", title: "Second", discarded: false }
+  ];
+  const { api } = await loadBackground({
+    tabs,
+    storedSession: {
+      monitorActiveRuns: {
+        "tab:102": {
+          tabId: 102,
+          chatKey: "conversation:second",
+          startedAt: now - 20_000,
+          workPhase: "Analyzing",
+          phaseStartedAt: now - 5_000,
+          updatedAt: now
+        }
+      }
+    }
+  });
+
+  await api.rebuildRegistry();
+
+  const data = Array.from(api.snapshot());
+  assert.equal(data.length, 2);
+  assert.deepEqual(
+    data.map((chat) => chat.tabId).sort((a, b) => a - b),
+    [101, 102]
+  );
+  assert.equal(api.getChat(101).state, "idle");
+  assert.equal(api.getChat(102).state, "working");
+  assert.equal(api.getChat(102).startedAt, now - 20_000);
+});
+
 test("chat identity prefers conversation id and falls back to tab id", async () => {
   const { api } = await loadBackground();
   assert.equal(api.chatKeyFromUrl("https://chatgpt.com/c/abc-123", 7), "conversation:abc-123");
