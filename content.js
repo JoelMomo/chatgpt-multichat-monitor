@@ -79,6 +79,7 @@
   let openMenuSectionId = null;
   let floatingMenu = null;
   let undoTimer = null;
+  let lockFeedbackTimer = null;
   let currentUndoId = "";
   let draggedChatKey = null;
   let draggedSectionToken = null;
@@ -817,6 +818,18 @@
 
   function layoutLocked() {
     return settings.monitorLayoutLocked === true;
+  }
+
+  function signalLayoutLocked() {
+    if (!layoutLocked() || !lockButton) return;
+    lockButton.classList.remove("lock-feedback");
+    void lockButton.offsetWidth;
+    lockButton.classList.add("lock-feedback");
+    if (lockFeedbackTimer) clearTimeout(lockFeedbackTimer);
+    lockFeedbackTimer = setTimeout(() => {
+      lockFeedbackTimer = null;
+      lockButton?.classList.remove("lock-feedback");
+    }, 320);
   }
 
   function sectionUiState(sectionKey) {
@@ -1752,8 +1765,9 @@
     lockButton.setAttribute("aria-label", locked ? "Unlock layout" : "Lock layout");
     lockButton.classList.toggle("is-locked", locked);
     addSeparatorButton.hidden = mode !== "manual";
-    addSeparatorButton.disabled = locked;
-    addSeparatorButton.title = locked ? "Unlock layout to add a separator" : "Add separator";
+    addSeparatorButton.disabled = false;
+    addSeparatorButton.setAttribute("aria-disabled", locked ? "true" : "false");
+    addSeparatorButton.title = locked ? "Layout locked" : "Add separator";
     if (footCopy) {
       footCopy.textContent = locked
         ? "Layout locked"
@@ -2061,7 +2075,7 @@
       ".count-badge[hidden]{display:none}.count-working{background:rgba(99,230,215,.13);color:#63e6d7}.count-done{background:rgba(167,243,107,.13);color:#a7f36b}.count-attention{background:rgba(240,163,90,.14);color:#f0a35a}.count-pending{background:rgba(244,114,182,.13);color:#f472b6}" +
       ".add-separator{position:relative;width:26px;height:26px;flex:0 0 auto;border:0;border-radius:7px;background:transparent;color:#7f8b9b;cursor:pointer}.add-separator[hidden]{display:none}.add-separator:hover:not(:disabled){background:#202731;color:#d9e0e8}.add-separator:disabled{opacity:.28;cursor:default}" +
       ".add-separator::before{content:'';position:absolute;left:7px;right:7px;top:9px;height:1px;background:currentColor;box-shadow:0 5px 0 currentColor}.add-separator::after{content:'+';position:absolute;right:3px;bottom:2px;width:10px;height:10px;display:grid;place-items:center;border-radius:50%;background:#12171f;color:currentColor;font:800 9px/1 system-ui}" +
-      ".header-tool{width:26px;height:26px;flex:0 0 auto;border:0;border-radius:7px;background:transparent;color:#7f8b9b;display:grid;place-items:center;cursor:pointer;line-height:1}.header-tool:hover{background:#202731;color:#d9e0e8}.lock-button{font-size:13px}.lock-button.is-locked{color:#d6a25f}.undo-header{font:800 17px/1 system-ui;color:#74d8cc}.undo-header[hidden]{display:none}" +
+      ".header-tool{width:26px;height:26px;flex:0 0 auto;border:0;border-radius:7px;background:transparent;color:#7f8b9b;display:grid;place-items:center;cursor:pointer;line-height:1}.header-tool:hover{background:#202731;color:#d9e0e8}.lock-button{font-size:13px}.lock-button.is-locked{color:#d6a25f}.lock-button.lock-feedback{animation:lockshake .28s ease}.undo-header{font:800 17px/1 system-ui;color:#74d8cc}.undo-header[hidden]{display:none}" +
       ".collapse{width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:#aeb8c7;" +
       "font-size:18px;line-height:1;cursor:pointer}.collapse:hover{background:#202731;color:white}.layout-locked .head{cursor:default}" +
       ".list{min-height:0;overflow-y:auto;overflow-x:hidden;padding:7px}.manual-size{max-height:none}.manual-size .list{max-height:none;flex:1}.manual-size.is-empty .list{display:none}.manual-size.is-empty .empty{margin:auto 0}" +
@@ -2125,7 +2139,8 @@
       ":host([data-theme='cozy']) *{font-family:'Trebuchet MS',system-ui,sans-serif}:host([data-theme='cozy']) #panel{color:#f5eadf;background:#2c2621;border-color:#5b4b3f;box-shadow:0 16px 44px rgba(30,18,10,.38)}:host([data-theme='cozy']) .head{border-bottom-color:#4a3d33}:host([data-theme='cozy']) .chat-row:hover,:host([data-theme='cozy']) .chat-row.current{background:#3a312a}:host([data-theme='cozy']) .separator-rule{background:#655347}:host([data-theme='cozy']) .separator-caption{color:#c0a992}:host([data-theme='cozy']) .more:hover,:host([data-theme='cozy']) .header-tool:hover,:host([data-theme='cozy']) .collapse:hover{background:#43382f;color:#fff4e9}:host([data-theme='cozy']) .foot{color:#b29b86;border-top-color:#4a3d33}:host([data-theme='cozy']) .floating-menu{border-color:#5b4b3f;background:#302821;box-shadow:0 10px 26px rgba(25,14,8,.36)}:host([data-theme='cozy']) .menu-action{color:#f0e2d4}:host([data-theme='cozy']) .menu-action:hover{background:#43382f}" +
       ":host([data-theme='neon']) *{font-family:Consolas,'Courier New',monospace}:host([data-theme='neon']) #panel{color:#eaffff;background:#07101a;border-color:#24536c;box-shadow:0 0 0 1px rgba(0,245,212,.06),0 18px 46px rgba(0,0,0,.5)}:host([data-theme='neon']) .head{border-bottom-color:#173d52}:host([data-theme='neon']) .brand{color:#bffff8}:host([data-theme='neon']) .chat-row:hover,:host([data-theme='neon']) .chat-row.current{background:#0d1d2b}:host([data-theme='neon']) .separator-rule{background:#244b64}:host([data-theme='neon']) .separator-caption{color:#8edbd5}:host([data-theme='neon']) .more:hover,:host([data-theme='neon']) .header-tool:hover,:host([data-theme='neon']) .collapse:hover{background:#102737;color:#00f5d4}:host([data-theme='neon']) .lock-button.is-locked{color:#d08cff}:host([data-theme='neon']) .foot{color:#7299aa;border-top-color:#173d52}:host([data-theme='neon']) .auto-size-button{border-color:#24536c;background:#081722;color:#8edbd5}:host([data-theme='neon']) .auto-size-button:hover{background:#102737;color:#00f5d4}:host([data-theme='neon']) .floating-menu{border-color:#24536c;background:#07111b;box-shadow:0 0 24px rgba(0,245,212,.09)}:host([data-theme='neon']) .menu-action{color:#dffcff}:host([data-theme='neon']) .menu-action:hover{background:#102737;color:#00f5d4}" +
       ":host([data-theme='minimal']) *{font-family:Arial,Helvetica,sans-serif}:host([data-theme='minimal']) #panel{color:#222;background:#fbfbfa;border-color:#d9d9d6;border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.12)}:host([data-theme='minimal']) .head{border-bottom-color:#e2e2df}:host([data-theme='minimal']) .count-badge{box-shadow:none}:host([data-theme='minimal']) .add-separator{color:#777}:host([data-theme='minimal']) .add-separator:hover:not(:disabled){background:#ececea;color:#222}:host([data-theme='minimal']) .add-separator::after{background:#fbfbfa}:host([data-theme='minimal']) .undo-header{color:#444}:host([data-theme='minimal']) .chat-row:hover,:host([data-theme='minimal']) .chat-row.current{background:#f0f0ed}:host([data-theme='minimal']) .separator-rule{background:#d3d3d0}:host([data-theme='minimal']) .separator-caption{color:#737373}:host([data-theme='minimal']) .separator-input{border-color:#ccccca;background:#fff;color:#222}:host([data-theme='minimal']) .separator-count{color:#888}:host([data-theme='minimal']) .section-dropzone{border-color:#ccccca;color:#888}:host([data-theme='minimal']) .section-dropzone.drop-section{border-color:#888;background:#f2f2ef;color:#444}:host([data-theme='minimal']) .more,:host([data-theme='minimal']) .header-tool,:host([data-theme='minimal']) .collapse{color:#6d6d6d}:host([data-theme='minimal']) .more:hover,:host([data-theme='minimal']) .header-tool:hover,:host([data-theme='minimal']) .collapse:hover{background:#ececea;color:#222}:host([data-theme='minimal']) .lock-button.is-locked{color:#444}:host([data-theme='minimal']) .meta{color:#777}:host([data-theme='minimal']) .pinned .chat-title{color:#111}:host([data-theme='minimal']) .empty{color:#777}:host([data-theme='minimal']) .foot{color:#777;border-top-color:#e2e2df}:host([data-theme='minimal']) .version-label{color:#999}:host([data-theme='minimal']) .auto-size-button{border-color:#d2d2cf;background:#fff;color:#555}:host([data-theme='minimal']) .auto-size-button:hover{background:#ececea;color:#222}:host([data-theme='minimal']) .resize-handle{background:linear-gradient(135deg,transparent 0 52%,#888 53% 58%,transparent 59% 68%,#888 69% 74%,transparent 75%)}:host([data-theme='minimal']) .floating-menu{border-color:#d9d9d6;background:#fff;box-shadow:0 10px 24px rgba(0,0,0,.12)}:host([data-theme='minimal']) .menu-action{color:#333}:host([data-theme='minimal']) .menu-action:hover{background:#efefed}" +
-      ".flash{animation:stateflash 1.2s ease-out 1}.no-animations .state-working .dot,.no-animations .state-pending .dot,.no-animations .flash{animation:none}:host([data-theme='light']) .flash{animation-name:stateflashlight}" +
+      ".flash{animation:stateflash 1.2s ease-out 1}.no-animations .state-working .dot,.no-animations .state-pending .dot,.no-animations .flash,.no-animations .lock-button.lock-feedback{animation:none}:host([data-theme='light']) .flash{animation-name:stateflashlight}" +
+      "@keyframes lockshake{0%,100%{transform:translateX(0)}20%{transform:translateX(-2px)}40%{transform:translateX(2px)}60%{transform:translateX(-1.5px)}80%{transform:translateX(1.5px)}}" +
       "@keyframes workingpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.52;transform:scale(.82)}}@keyframes pendingpulse{0%,100%{opacity:1;transform:scale(1);box-shadow:0 0 0 3px rgba(244,114,182,.08),0 0 9px rgba(244,114,182,.18)}50%{opacity:.62;transform:scale(.9);box-shadow:0 0 0 4px rgba(244,114,182,.05),0 0 13px rgba(244,114,182,.12)}}" +
       "@keyframes stateflash{0%{background:#2b3440}100%{background:transparent}}@keyframes stateflashlight{0%{background:#dce7f2}100%{background:transparent}}";
 
@@ -2225,6 +2240,18 @@
     floatingMenu.hidden = true;
 
     shadow.append(style, panel, floatingMenu);
+    shadow.addEventListener("pointerdown", (event) => {
+      if (!layoutLocked() || !(event.target instanceof Element)) return;
+      const target = event.target;
+      if (target.closest(".lock-button,.collapse,.undo-header,.more,.floating-menu")) return;
+
+      const blockedLayoutTarget =
+        target.closest(".copy,.section-separator,.add-separator,.resize-handle") ||
+        (target.closest(".head") && !target.closest("button"));
+
+      if (blockedLayoutTarget) signalLayoutLocked();
+    }, true);
+
     for (const eventType of [
       "click", "contextmenu", "dblclick", "keydown",
       "pointerdown", "pointermove", "pointerup",
@@ -2251,7 +2278,10 @@
 
     addSeparatorButton.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (layoutLocked()) return;
+      if (layoutLocked()) {
+        signalLayoutLocked();
+        return;
+      }
       sendMessage({ type: "monitor-add-separator" }).then((response) => {
         if (response?.ok && response.undoId) showLayoutUndo("Separator added", response.undoId);
       });

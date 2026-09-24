@@ -103,7 +103,7 @@
 - **Section controls:** manual section menus include rename, clear name, collapse/expand, move up/down and delete. Collapsed sections show their chat count.
 - **Section separators:** in Manual mode, add a separator from the monitor header and drag the separator itself wherever you want. Chats inside each resulting block continue to sort by state priority. Dragging highlights the destination section and empty/collapsed sections expose a temporary **Drop here** target.
 - **Quieter counters:** Working, Done, Pending and Attention counts use low-opacity tinted circles with the number itself in the state color.
-- **Safer layout editing:** a header **lock** toggles between open/closed states and prevents accidental layout edits while locked. The short-lived **Undo** action now appears as a compact header control instead of covering the monitor. **Reset layout** clears manual separators, project/manual ordering, assignments and collapse state while keeping aliases, pins, Pending and other chat preferences.
+- **Safer layout editing:** a header **lock** toggles between open/closed states and prevents accidental layout edits while locked. Trying a blocked layout gesture gives the closed lock a short visual shake so the reason is immediately clear. The short-lived **Undo** action now appears as a compact header control instead of covering the monitor. **Reset layout** clears manual separators, project/manual ordering, assignments and collapse state while keeping aliases, pins, Pending and other chat preferences.
 - **Version at a glance:** the normal monitor footer shows the current extension version; compact mode stays visually minimal and hides it.
 
 <p align="center">

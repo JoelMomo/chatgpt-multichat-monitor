@@ -35,7 +35,7 @@
 - Removed periodic state heartbeats and redundant content-script reinjection on ordinary service-worker wakes. Unchanged state updates no longer broadcast a full snapshot to every ChatGPT tab.
 - Kept visible chat rows attached across monitor snapshots instead of explicitly detaching and reinserting every row, reducing transient flicker during state changes and duplicate-tab updates.
 - Serialized offscreen-audio creation so simultaneous alerts share one document, pruned orphan temporary tab preferences and stopped exposing internal chat/section identifiers through drag payloads.
-- Added a persistent open/closed **layout lock** in the monitor header. Locked mode blocks accidental drag/reorder, section editing/collapse, separator creation, panel movement and resizing while leaving normal chat actions available.
+- Added a persistent open/closed **layout lock** in the monitor header. Locked mode blocks accidental drag/reorder, section editing/collapse, separator creation, panel movement and resizing while leaving normal chat actions available; blocked layout gestures now give the closed lock a short visual shake.
 - Done rows now show simply **Done** instead of a continuously updating “Done … ago” age.
 
 ## 0.3.0 - 2026-09-19

@@ -409,6 +409,16 @@ test("synthetic events are blocked at the monitor boundary", () => {
   assert.equal(stopped, true);
   assert.match(functionSource(contentSource, "buildOverlay"), /attachShadow\(\{ mode: "closed" \}\)/);
 });
+
+test("locked layout gestures signal the closed lock", () => {
+  const helper = functionSource(contentSource, "signalLayoutLocked");
+  assert.match(helper, /lock-feedback/);
+  assert.match(helper, /offsetWidth/);
+  assert.match(contentSource, /@keyframes lockshake/);
+  assert.match(functionSource(contentSource, "buildOverlay"), /blockedLayoutTarget/);
+  assert.match(functionSource(contentSource, "buildOverlay"), /signalLayoutLocked\(\)/);
+});
+
 test("layout lock is enforced by background mutations", async () => {
   const { api } = await loadBackground({ stored: { monitorLayoutLocked: true } });
   const result = await api.setChatOrder(["conversation:locked"]);
