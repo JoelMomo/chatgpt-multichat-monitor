@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased - 0.4.0
+## Unreleased
+
+- Fixed registry rebuilds and a service-worker cold-start race that could briefly publish a partial monitor containing only the active chat. Open tabs receive provisional rows while content scripts initialize, persisted Working runs are preserved, and snapshots are not broadcast until the initial registry is complete.
+
+## 0.4.0 - 2026-09-24
 
 - Added persistent panel resizing from a discreet bottom-right handle, with viewport clamping and a **Reset size** control.
 - Added an **Opacity** slider in the popup, adjustable from 35% to 100% and applied live to the floating monitor.

@@ -71,6 +71,9 @@ let updateState = {
 };
 let whatsNewState = null;
 let initPromise = null;
+let registryReadyPromise = null;
+let registryReady = false;
+let registryRebuildPromise = Promise.resolve();
 let updateCheckPromise = null;
 let lastAudioRequestAt = 0;
 let offscreenCreatePromise = null;
@@ -918,7 +921,7 @@ function upsertState(payload, tab) {
 }
 
 async function broadcast() {
-  await ensureInitialized();
+  await ensureRegistryReady();
   const data = snapshot();
   let tabs = [];
   try {
@@ -937,6 +940,30 @@ async function broadcast() {
       }))
   );
   await updateBadge();
+}
+
+function seedTabStateFromMetadata(tab) {
+  if (!tab || !Number.isInteger(tab.id)) return false;
+
+  const chatKey = chatKeyFromUrl(tab.url, tab.id);
+  const run = activeRunForTab(tab.id, chatKey);
+
+  if (run) {
+    return upsertState({
+      state: "working",
+      title: tab.title,
+      url: tab.url,
+      startedAt: run.startedAt,
+      workPhase: run.workPhase,
+      phaseStartedAt: run.phaseStartedAt
+    }, tab);
+  }
+
+  return upsertState({
+    state: "idle",
+    title: tab.title,
+    url: tab.url
+  }, tab);
 }
 
 async function rebuildRegistry() {
@@ -1005,26 +1032,43 @@ async function rebuildRegistry() {
 
     try {
       const local = await chrome.tabs.sendMessage(tab.id, { type: "monitor-get-local-state" });
-      if (local && local.initializing !== true) upsertState(local, tab);
-    } catch {
-      if (!chats.has(tab.id)) {
-        const chatKey = chatKeyFromUrl(tab.url, tab.id);
-        const run = activeRunForTab(tab.id, chatKey);
-        if (run) {
-          upsertState({
-            state: "working",
-            title: tab.title,
-            url: tab.url,
-            startedAt: run.startedAt,
-            workPhase: run.workPhase,
-            phaseStartedAt: run.phaseStartedAt
-          }, tab);
-        } else {
-          upsertState({ state: "idle", title: tab.title, url: tab.url }, tab);
-        }
+      if (local && local.initializing !== true) {
+        upsertState(local, tab);
+      } else if (!chats.has(tab.id)) {
+        seedTabStateFromMetadata(tab);
       }
+    } catch {
+      if (!chats.has(tab.id)) seedTabStateFromMetadata(tab);
     }
   }));
+}
+
+function queueRegistryRebuild() {
+  registryRebuildPromise = registryRebuildPromise
+    .catch(() => {})
+    .then(() => rebuildRegistry());
+  return registryRebuildPromise;
+}
+
+function ensureRegistryReady() {
+  if (registryReady) return Promise.resolve();
+  if (registryReadyPromise) return registryReadyPromise;
+
+  registryReadyPromise = (async () => {
+    await ensureInitialized();
+    await queueRegistryRebuild();
+    registryReady = true;
+  })().catch((error) => {
+    registryReadyPromise = null;
+    throw error;
+  });
+
+  return registryReadyPromise;
+}
+
+async function refreshRegistry() {
+  await ensureRegistryReady();
+  await queueRegistryRebuild();
 }
 
 async function acknowledgeFinishedTab(tabId) {
@@ -1427,7 +1471,7 @@ async function setLayout(tokens) {
 }
 
 async function cycleChat(states) {
-  await rebuildRegistry();
+  await refreshRegistry();
   const data = snapshot().filter((chat) =>
     !chat.hidden && states.includes(chat.state)
   );
@@ -1506,7 +1550,7 @@ async function injectIntoOpenTabs() {
       }))
   );
 
-  await rebuildRegistry();
+  await refreshRegistry();
   await broadcast();
 }
 
@@ -1547,7 +1591,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "monitor-get-snapshot") {
-    rebuildRegistry()
+    refreshRegistry()
       .then(() => sendResponse({ chats: snapshot(), separators: separatorSnapshot() }))
       .catch(() => sendResponse({ chats: snapshot(), separators: separatorSnapshot() }));
     return true;
@@ -1837,7 +1881,21 @@ async function handleTabUpdated(tabId, changeInfo, tab) {
   }
 
   const previous = chats.get(tabId);
-  if (!previous) return;
+  if (!previous) {
+    const nextUrl = changeInfo.url || tab.url || "";
+    if (!nextUrl.startsWith("https://chatgpt.com/")) return;
+
+    if (discardedNow && clearActiveRunForTab(tabId)) {
+      await queueActiveRunsPersist();
+    }
+    seedTabStateFromMetadata({
+      ...tab,
+      url: nextUrl,
+      title: changeInfo.title || tab.title
+    });
+    await broadcast();
+    return;
+  }
 
   const nextUrl = changeInfo.url || tab.url || previous.url;
   const nextChatKey = chatKeyFromUrl(nextUrl, tabId);
@@ -1930,15 +1988,14 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.runtime.onStartup.addListener(() => {
   (async () => {
-    await rebuildRegistry();
+    await refreshRegistry();
     await updateBadge();
     await checkForUpdates();
   })().catch(() => {});
 });
 
-ensureInitialized()
+ensureRegistryReady()
   .then(async () => {
-    await rebuildRegistry();
     await updateBadge();
     await checkForUpdates();
   })
