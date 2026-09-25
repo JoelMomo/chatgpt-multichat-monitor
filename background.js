@@ -71,6 +71,9 @@ let updateState = {
 };
 let whatsNewState = null;
 let initPromise = null;
+let registryReadyPromise = null;
+let registryReady = false;
+let registryRebuildPromise = Promise.resolve();
 let updateCheckPromise = null;
 let lastAudioRequestAt = 0;
 let offscreenCreatePromise = null;
@@ -918,7 +921,7 @@ function upsertState(payload, tab) {
 }
 
 async function broadcast() {
-  await ensureInitialized();
+  await ensureRegistryReady();
   const data = snapshot();
   let tabs = [];
   try {
@@ -1038,6 +1041,34 @@ async function rebuildRegistry() {
       if (!chats.has(tab.id)) seedTabStateFromMetadata(tab);
     }
   }));
+}
+
+function queueRegistryRebuild() {
+  registryRebuildPromise = registryRebuildPromise
+    .catch(() => {})
+    .then(() => rebuildRegistry());
+  return registryRebuildPromise;
+}
+
+function ensureRegistryReady() {
+  if (registryReady) return Promise.resolve();
+  if (registryReadyPromise) return registryReadyPromise;
+
+  registryReadyPromise = (async () => {
+    await ensureInitialized();
+    await queueRegistryRebuild();
+    registryReady = true;
+  })().catch((error) => {
+    registryReadyPromise = null;
+    throw error;
+  });
+
+  return registryReadyPromise;
+}
+
+async function refreshRegistry() {
+  await ensureRegistryReady();
+  await queueRegistryRebuild();
 }
 
 async function acknowledgeFinishedTab(tabId) {
@@ -1440,7 +1471,7 @@ async function setLayout(tokens) {
 }
 
 async function cycleChat(states) {
-  await rebuildRegistry();
+  await refreshRegistry();
   const data = snapshot().filter((chat) =>
     !chat.hidden && states.includes(chat.state)
   );
@@ -1519,7 +1550,7 @@ async function injectIntoOpenTabs() {
       }))
   );
 
-  await rebuildRegistry();
+  await refreshRegistry();
   await broadcast();
 }
 
@@ -1560,7 +1591,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "monitor-get-snapshot") {
-    rebuildRegistry()
+    refreshRegistry()
       .then(() => sendResponse({ chats: snapshot(), separators: separatorSnapshot() }))
       .catch(() => sendResponse({ chats: snapshot(), separators: separatorSnapshot() }));
     return true;
@@ -1957,15 +1988,14 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.runtime.onStartup.addListener(() => {
   (async () => {
-    await rebuildRegistry();
+    await refreshRegistry();
     await updateBadge();
     await checkForUpdates();
   })().catch(() => {});
 });
 
-ensureInitialized()
+ensureRegistryReady()
   .then(async () => {
-    await rebuildRegistry();
     await updateBadge();
     await checkForUpdates();
   })

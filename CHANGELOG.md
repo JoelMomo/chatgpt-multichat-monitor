@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Fixed registry rebuilds that could temporarily omit background ChatGPT tabs while their content scripts were still initializing. Open tabs now receive provisional rows immediately, preserving persisted Working runs until their live state is available.
+- Fixed registry rebuilds and a service-worker cold-start race that could briefly publish a partial monitor containing only the active chat. Open tabs receive provisional rows while content scripts initialize, persisted Working runs are preserved, and snapshots are not broadcast until the initial registry is complete.
 
 ## 0.4.0 - 2026-09-24
 

@@ -18,7 +18,7 @@ function event() {
   return { listeners, addListener(fn) { listeners.push(fn); } };
 }
 
-function chromeMock({ stored = {}, storedSession = {}, tabs = [], offscreenCreateGate = null } = {}) {
+function chromeMock({ stored = {}, storedSession = {}, tabs = [], offscreenCreateGate = null, localStateGate = null } = {}) {
   const storage = copy(stored);
   const sessionStorage = copy(storedSession);
   const currentTabs = copy(tabs);
@@ -64,6 +64,9 @@ function chromeMock({ stored = {}, storedSession = {}, tabs = [], offscreenCreat
       async query() { return copy(currentTabs); },
       async sendMessage(tabId, message) {
         sentTabMessages.push({ tabId, message: copy(message) });
+        if (message?.type === "monitor-get-local-state" && localStateGate) {
+          await localStateGate;
+        }
         return { initializing: true };
       },
       async get(tabId) {
@@ -329,6 +332,49 @@ test("registry rebuild prunes orphan temporary tab preferences", async () => {
   assert.equal(api.prefsFor("conversation:keep").alias, "Keep");
 });
 
+test("cold-start state cannot broadcast before the initial registry rebuild finishes", async () => {
+  let releaseLocalState;
+  const localStateGate = new Promise((resolve) => {
+    releaseLocalState = resolve;
+  });
+  const tabs = [
+    { id: 111, windowId: 1, active: true, url: "https://chatgpt.com/c/active", title: "Active" },
+    { id: 112, windowId: 1, active: false, url: "https://chatgpt.com/c/background-a", title: "Background A" },
+    { id: 113, windowId: 1, active: false, url: "https://chatgpt.com/c/background-b", title: "Background B" }
+  ];
+
+  const { events, sentTabMessages } = await loadBackground({
+    tabs,
+    localStateGate
+  });
+
+  const responsePromise = dispatchBackgroundMessage(events, {
+    type: "monitor-state",
+    state: "working",
+    title: "Active",
+    url: tabs[0].url,
+    startedAt: Date.now() - 2_000,
+    updatedAt: Date.now()
+  }, { tab: tabs[0] });
+
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(
+    sentTabMessages.filter((entry) => entry.message?.type === "monitor-snapshot").length,
+    0,
+    "no partial snapshot may escape while the first registry rebuild is blocked"
+  );
+
+  releaseLocalState();
+  const response = await responsePromise;
+  assert.equal(response.ok, true);
+
+  const snapshots = sentTabMessages.filter((entry) => entry.message?.type === "monitor-snapshot");
+  assert.ok(snapshots.length > 0);
+  for (const entry of snapshots) {
+    assert.equal(entry.message.chats.length, 3);
+  }
+});
 
 test("registry rebuild keeps initializing ChatGPT tabs visible provisionally", async () => {
   const now = Date.now();
