@@ -4,6 +4,7 @@
 
 ## 0.4.1 - 2026-09-25
 
+- Updated Working and Draft detection for the current ChatGPT composer/stop-control DOM: aria-only stop controls such as **Detener la generación** and standalone **Detener** / **Stop** are recognized immediately, and the new textarea name=prompt composer is tracked for Draft.
 - Fixed registry rebuilds and a service-worker cold-start race that could briefly publish a partial monitor containing only the active chat. Open tabs receive provisional rows while content scripts initialize, persisted Working runs are preserved, and snapshots are not broadcast until the initial registry is complete.
 
 ## 0.4.0 - 2026-09-24

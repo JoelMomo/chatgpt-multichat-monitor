@@ -511,6 +511,90 @@ test("null persisted phase timestamp remains null", async () => {
   assert.equal(api.activeRunForTab(32, "conversation:null-phase").phaseStartedAt, null);
 });
 
+
+test("current ChatGPT Spanish stop aria label is recognized as Working", () => {
+  const isStopButton = contentFunction("isStopButton");
+  const button = {
+    textContent: "",
+    getAttribute(name) {
+      if (name === "data-testid") return null;
+      if (name === "aria-label") return "Detener la generación";
+      return null;
+    }
+  };
+  assert.equal(isStopButton(button), true);
+});
+
+
+test("standalone Detener and Stop labels are recognized as Working", () => {
+  const isStopButton = contentFunction("isStopButton");
+  const make = (label, text = "") => ({
+    textContent: text,
+    getAttribute(name) {
+      if (name === "data-testid") return null;
+      if (name === "aria-label") return label;
+      return null;
+    }
+  });
+
+  assert.equal(isStopButton(make("Detener")), true);
+  assert.equal(isStopButton(make("Stop")), true);
+  assert.equal(isStopButton(make(null, "Detener")), true);
+  assert.equal(isStopButton(make(null, "Stop")), true);
+});
+
+test("standalone cancel-like controls do not create false Working", () => {
+  const isStopButton = contentFunction("isStopButton");
+  const make = (label) => ({
+    textContent: "",
+    getAttribute(name) {
+      if (name === "data-testid") return null;
+      if (name === "aria-label") return label;
+      return null;
+    }
+  });
+
+  assert.equal(isStopButton(make("Cancelar")), false);
+  assert.equal(isStopButton(make("Cancel")), false);
+  assert.equal(isStopButton(make("Stop sharing")), false);
+});
+
+test("fast Working signal scans aria-labelled controls", () => {
+  const stopButton = {
+    textContent: "",
+    getAttribute(name) {
+      if (name === "data-testid") return null;
+      if (name === "aria-label") return "Detener la generación";
+      return null;
+    }
+  };
+  const isStopButton = contentFunction("isStopButton");
+  const directWorkingSignal = contentFunction("directWorkingSignal", {
+    document: {
+      querySelectorAll(selector) {
+        assert.match(selector, /aria-label/);
+        return [stopButton];
+      }
+    },
+    isVisible: () => true,
+    isStopButton
+  });
+  assert.equal(directWorkingSignal(), true);
+});
+
+test("current ChatGPT textarea name prompt is detected as Draft", () => {
+  const textarea = { value: "draft text" };
+  const promptHasDraft = contentFunction("promptHasDraft", {
+    document: {
+      querySelectorAll(selector) {
+        return selector === 'textarea[name="prompt"]' ? [textarea] : [];
+      }
+    },
+    isVisible: () => true
+  });
+  assert.equal(promptHasDraft(), true);
+});
+
 test("phase classifier recognizes known visible labels", () => {
   const normalizeWorkPhaseText = contentFunction("normalizeWorkPhaseText");
   const classifyWorkPhaseText = contentFunction("classifyWorkPhaseText", { normalizeWorkPhaseText });

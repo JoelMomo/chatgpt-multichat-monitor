@@ -241,17 +241,23 @@
     if (!button) return false;
     if (button.getAttribute("data-testid") === "stop-button") return true;
     const label = ((button.getAttribute("aria-label") || "") + " " + (button.textContent || ""))
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
       .trim()
       .toLowerCase();
+    if (/^(stop|detener)$/i.test(label)) return true;
     return /(^|\s)(stop|cancel|detener|cancelar)(\s|$)/i.test(label) &&
       /(generat|response|respuesta|thinking|pensando|generacion)/i.test(label);
   }
 
   function directWorkingSignal() {
-    const direct = document.querySelector(
-      'button[data-testid="stop-button"], [data-testid="stop-button"]'
+    const candidates = document.querySelectorAll(
+      'button[data-testid="stop-button"], [data-testid="stop-button"], button[aria-label], [role="button"][aria-label]'
     );
-    return isVisible(direct);
+    for (const candidate of candidates) {
+      if (isVisible(candidate) && isStopButton(candidate)) return true;
+    }
+    return false;
   }
 
   function fallbackWorkingSignal() {
@@ -363,8 +369,12 @@
   function promptHasDraft() {
     const selectors = [
       "#prompt-textarea",
+      "#mobile-composer-prompt",
       '[data-testid="composer-text-input"]',
+      '[data-mobile-composer-prompt]',
       'textarea[data-testid="prompt-textarea"]',
+      'textarea[name="prompt"]',
+      '[data-composer-editor-host] textarea',
       "form textarea",
       'form [contenteditable="true"]'
     ];
@@ -2618,8 +2628,12 @@
 
     const editorSelector = [
       "#prompt-textarea",
+      "#mobile-composer-prompt",
       '[data-testid="composer-text-input"]',
+      '[data-mobile-composer-prompt]',
       'textarea[data-testid="prompt-textarea"]',
+      'textarea[name="prompt"]',
+      '[data-composer-editor-host] textarea',
       "form textarea",
       'form [contenteditable="true"]'
     ].join(",");
