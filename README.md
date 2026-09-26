@@ -89,6 +89,12 @@
   <sub>The cyan <strong>Working</strong> LED pulses while ChatGPT is generating, then switches to lime <strong>Done</strong>.</sub>
 </p>
 
+## What's new in 0.4.1
+
+- **Current ChatGPT compatibility:** Working detection now supports the current aria-only active-response controls, including standalone **Detener / Stop**, while keeping stricter matching for unrelated cancel/stop-like buttons.
+- **Draft compatibility:** the monitor recognizes the current ChatGPT composer structure, including the new prompt textarea attributes used by the live site.
+- **Registry stability:** fixed a service-worker cold-start race that could briefly publish a partial monitor with only the active conversation while background tabs were still initializing.
+- **Regression coverage:** the release includes dedicated tests for the current Working/Draft DOM and registry cold-start behavior.
 ## What's new in 0.4.0
 
 - **Auto size + manual resize:** the monitor follows the number of visible chats by default, while a custom size remains available whenever you drag the resize handle. The footer's **Auto size** button returns to chat-driven sizing and is hidden while the layout is locked. Auto-fit uses the panel's available height without introducing a second list cap, avoiding unnecessary scrollbars during normal state changes.
