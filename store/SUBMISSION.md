@@ -1,6 +1,6 @@
 # Store submission pack
 
-Prepared for **ChatGPT MultiChat Monitor v0.4.0**.
+Prepared for **ChatGPT MultiChat Monitor v0.4.1**.
 
 ## Public URLs
 
@@ -26,7 +26,7 @@ This is also the current manifest description.
 
 ChatGPT MultiChat Monitor adds a small floating status panel to chatgpt.com so you can keep track of several conversations at once without repeatedly checking every tab.
 
-The monitor shows when a conversation is Working, Done, Draft, Pending, waiting for attention, asking for a Retry, reporting an Error, Stopped or Idle. Working chats include a reload-safe elapsed timer and can show the visible ChatGPT phase as Analyzing, Searching or Executing (with Spanish equivalents when the interface is in Spanish). Unread Done chats stay highlighted until you visit them.
+The monitor shows when a conversation is Working, Done, Draft, Pending, waiting for attention, asking for a Retry, reporting an Error, Stopped or Idle. Version 0.4.1 updates Working and Draft detection for the current ChatGPT DOM/accessibility controls and fixes a service-worker cold-start registry race that could briefly hide background conversations. Working chats include a reload-safe elapsed timer and can show the visible ChatGPT phase as Analyzing, Searching or Executing (with Spanish equivalents when the interface is in Spanish). Unread Done chats stay highlighted until you visit them.
 
 Chats are grouped by ChatGPT project by default, with Manual and None grouping modes also available. Project headers and manual separators can be reordered or collapsed, while chats can be reordered inside their current project without changing ChatGPT project membership. A layout lock prevents accidental structural edits and gives visual feedback when a blocked layout action is attempted.
 
@@ -160,11 +160,11 @@ Disclose local access to website content / prompt-composer content and current C
 
 ## Assets
 
-All store assets are in `store/assets/`. The v0.4.0 screenshots below were captured from the real extension running on ChatGPT in an isolated browser profile; no generated UI mockups are used.
+All store assets are in `store/assets/`. The screenshots below were captured from the real v0.4.0 extension UI running on ChatGPT in an isolated browser profile; they remain visually accurate for v0.4.1 because this patch changes detection/registry behavior rather than the UI. No generated UI mockups are used.
 
 ### Shared screenshots
 
-- `shot-1-overview.png` — 1280x800 — real v0.4.0 overview with By project grouping and mixed chat states.
+- `shot-1-overview.png` — 1280x800 — real overview with By project grouping and mixed chat states.
 - `shot-2-working-done.png` — 1280x800 — active work phases/timers alongside Done, Pending and attention states.
 - `shot-3-compact.png` — 1280x800 — real Compact mode with project groups and status indicators.
 - `shot-4-order.png` — 1280x800 — project organization with collapsed groups and the layout lock enabled.
