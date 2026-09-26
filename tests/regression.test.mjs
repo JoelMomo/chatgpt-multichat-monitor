@@ -525,6 +525,40 @@ test("current ChatGPT Spanish stop aria label is recognized as Working", () => {
   assert.equal(isStopButton(button), true);
 });
 
+
+test("standalone Detener and Stop labels are recognized as Working", () => {
+  const isStopButton = contentFunction("isStopButton");
+  const make = (label, text = "") => ({
+    textContent: text,
+    getAttribute(name) {
+      if (name === "data-testid") return null;
+      if (name === "aria-label") return label;
+      return null;
+    }
+  });
+
+  assert.equal(isStopButton(make("Detener")), true);
+  assert.equal(isStopButton(make("Stop")), true);
+  assert.equal(isStopButton(make(null, "Detener")), true);
+  assert.equal(isStopButton(make(null, "Stop")), true);
+});
+
+test("standalone cancel-like controls do not create false Working", () => {
+  const isStopButton = contentFunction("isStopButton");
+  const make = (label) => ({
+    textContent: "",
+    getAttribute(name) {
+      if (name === "data-testid") return null;
+      if (name === "aria-label") return label;
+      return null;
+    }
+  });
+
+  assert.equal(isStopButton(make("Cancelar")), false);
+  assert.equal(isStopButton(make("Cancel")), false);
+  assert.equal(isStopButton(make("Stop sharing")), false);
+});
+
 test("fast Working signal scans aria-labelled controls", () => {
   const stopButton = {
     textContent: "",

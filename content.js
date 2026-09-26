@@ -245,6 +245,7 @@
       .replace(/[\u0300-\u036f]/g, "")
       .trim()
       .toLowerCase();
+    if (/^(stop|detener)$/i.test(label)) return true;
     return /(^|\s)(stop|cancel|detener|cancelar)(\s|$)/i.test(label) &&
       /(generat|response|respuesta|thinking|pensando|generacion)/i.test(label);
   }
