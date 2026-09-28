@@ -18,11 +18,13 @@ function event() {
   return { listeners, addListener(fn) { listeners.push(fn); } };
 }
 
-function chromeMock({ stored = {}, storedSession = {}, tabs = [], offscreenCreateGate = null, localStateGate = null } = {}) {
+function chromeMock({ stored = {}, storedSession = {}, tabs = [], offscreenCreateGate = null, localStateGate = null, missingContentTabIds = [] } = {}) {
   const storage = copy(stored);
   const sessionStorage = copy(storedSession);
   const currentTabs = copy(tabs);
   const sentTabMessages = [];
+  const injectedScripts = [];
+  const missingReceivers = new Set(missingContentTabIds);
   const offscreenState = { exists: false, createCount: 0 };
   const events = {
     runtimeMessage: event(), installed: event(), startup: event(),
@@ -64,6 +66,7 @@ function chromeMock({ stored = {}, storedSession = {}, tabs = [], offscreenCreat
       async query() { return copy(currentTabs); },
       async sendMessage(tabId, message) {
         sentTabMessages.push({ tabId, message: copy(message) });
+        if (missingReceivers.has(tabId)) throw new Error("Could not establish connection. Receiving end does not exist.");
         if (message?.type === "monitor-get-local-state" && localStateGate) {
           await localStateGate;
         }
@@ -87,7 +90,14 @@ function chromeMock({ stored = {}, storedSession = {}, tabs = [], offscreenCreat
       async setBadgeBackgroundColor() {},
       async setTitle() {}
     },
-    scripting: { async executeScript() {} },
+    scripting: {
+      async executeScript(details) {
+        injectedScripts.push(copy(details));
+        const tabId = details?.target?.tabId;
+        if (Number.isInteger(tabId)) missingReceivers.delete(tabId);
+        return [];
+      }
+    },
     offscreen: {
       async hasDocument() { return offscreenState.exists; },
       async createDocument() {
@@ -99,7 +109,7 @@ function chromeMock({ stored = {}, storedSession = {}, tabs = [], offscreenCreat
     }
   };
 
-  return { chrome, storage, sessionStorage, events, offscreenState, sentTabMessages };
+  return { chrome, storage, sessionStorage, events, offscreenState, sentTabMessages, injectedScripts, missingReceivers };
 }
 
 async function loadBackground(options = {}) {
@@ -118,7 +128,7 @@ async function loadBackground(options = {}) {
   const exportsSource =
     "\nglobalThis.__testApi = {" +
     " ensureInitialized, upsertState, activeRunForTab, queueActiveRunsPersist, chatKeyFromUrl," +
-    " activateTab, setChatOrder, setChatPreference, prefsFor, handleTabUpdated, handleTabRemoved, rebuildRegistry, ensureOffscreen, snapshot, signalLayoutLockedInActiveTab, resetMonitorPosition, resetMonitorSize, resetChatOrder, resetLayout," +
+    " activateTab, setChatOrder, setChatPreference, prefsFor, handleTabUpdated, handleTabRemoved, rebuildRegistry, broadcast, ensureOffscreen, snapshot, signalLayoutLockedInActiveTab, resetMonitorPosition, resetMonitorSize, resetChatOrder, resetLayout," +
     " getChat(tabId) { return chats.get(tabId) || null; }" +
     "};";
 
@@ -330,6 +340,66 @@ test("registry rebuild prunes orphan temporary tab preferences", async () => {
   await api.rebuildRegistry();
   assert.equal(Object.keys(api.prefsFor("tab:999")).length, 0);
   assert.equal(api.prefsFor("conversation:keep").alias, "Keep");
+});
+
+
+test("broadcast repairs a ChatGPT tab with no content-script receiver", async () => {
+  const tabs = [
+    { id: 121, windowId: 1, url: "https://chatgpt.com/c/healthy", title: "Healthy" },
+    { id: 122, windowId: 1, url: "https://chatgpt.com/c/missing", title: "Missing" }
+  ];
+  const { api, sentTabMessages, injectedScripts, missingReceivers } = await loadBackground({
+    tabs,
+    missingContentTabIds: [122]
+  });
+
+  await api.rebuildRegistry();
+  await new Promise((resolve) => setImmediate(resolve));
+  sentTabMessages.length = 0;
+  injectedScripts.length = 0;
+  missingReceivers.add(122);
+
+  await api.broadcast();
+
+  const missingSnapshots = sentTabMessages.filter((entry) =>
+    entry.tabId === 122 && entry.message?.type === "monitor-snapshot"
+  );
+  assert.equal(injectedScripts.length, 1);
+  assert.equal(injectedScripts[0].target.tabId, 122);
+  assert.deepEqual(injectedScripts[0].files, ["content.js"]);
+  assert.equal(missingSnapshots.length, 2, "failed delivery should be retried after reinjection");
+});
+
+
+test("activating a ChatGPT tab repairs a missing content script", async () => {
+  const tab = {
+    id: 123,
+    windowId: 1,
+    active: true,
+    url: "https://chatgpt.com/c/activation-repair",
+    title: "Activation repair"
+  };
+  const { api, events, injectedScripts, missingReceivers } = await loadBackground({ tabs: [tab] });
+
+  await api.rebuildRegistry();
+  await new Promise((resolve) => setImmediate(resolve));
+  injectedScripts.length = 0;
+  missingReceivers.add(tab.id);
+
+  const listener = events.activated.listeners[0];
+  assert.equal(typeof listener, "function");
+  listener({ tabId: tab.id, windowId: tab.windowId });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(injectedScripts.length, 1);
+  assert.equal(injectedScripts[0].target.tabId, tab.id);
+  assert.deepEqual(injectedScripts[0].files, ["content.js"]);
+});
+
+test("content script repairs a detached monitor host", () => {
+  assert.match(contentSource, /function ensureOverlayAttached\(\)/);
+  assert.match(functionSource(contentSource, "render"), /ensureOverlayAttached\(\)/);
+  assert.ok(contentSource.includes("const observer = new MutationObserver(() => {\n    ensureOverlayAttached();"));
 });
 
 test("cold-start state cannot broadcast before the initial registry rebuild finishes", async () => {

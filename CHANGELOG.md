@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added self-healing content-script delivery and overlay reattachment so ChatGPT tabs recover automatically if injection is missed during loading/restoration or if the monitor host is removed from the page.
+
 ## 0.4.1 - 2026-09-25
 
 - Updated Working and Draft detection for the current ChatGPT composer/stop-control DOM: aria-only stop controls such as **Detener la generación** and standalone **Detener** / **Stop** are recognized immediately, and the new textarea name=prompt composer is tracked for Draft.

@@ -1774,6 +1774,7 @@
 
   function render() {
     if (!panel || !host) return;
+    if (!ensureOverlayAttached()) return;
 
     host.style.display = settings.monitorEnabled === false ? "none" : "block";
     if (settings.monitorEnabled === false) return;
@@ -2079,8 +2080,21 @@
     window.addEventListener("blur", finishResize);
   }
 
+  function ensureOverlayAttached() {
+    if (!host) return false;
+    if (!host.isConnected) {
+      const root = document.documentElement;
+      if (!root) return false;
+      root.appendChild(host);
+    }
+    return host.isConnected;
+  }
+
   function buildOverlay() {
-    if (host) return;
+    if (host) {
+      ensureOverlayAttached();
+      return;
+    }
 
     host = document.createElement("div");
     host.id = "chatgpt-multichat-monitor-host";
@@ -2618,6 +2632,7 @@
   });
 
   const observer = new MutationObserver(() => {
+    ensureOverlayAttached();
     scheduleEvaluate();
     scheduleProjectRefresh();
   });
@@ -2672,6 +2687,7 @@
   });
 
   setInterval(() => {
+    ensureOverlayAttached();
     evaluate({ allowFallback: true });
   }, FALLBACK_SCAN_MS);
 

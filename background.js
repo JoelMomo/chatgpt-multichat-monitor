@@ -920,6 +920,44 @@ function upsertState(payload, tab) {
   return snapshotChanged;
 }
 
+async function injectMonitorIntoTab(tabId) {
+  if (!Number.isInteger(tabId)) return false;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["content.js"]
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function sendTabMessageWithRepair(tab, message) {
+  if (!tab || !Number.isInteger(tab.id) || tab.discarded) {
+    return { ok: false, response: null, repaired: false };
+  }
+  if (!String(tab.url || "").startsWith("https://chatgpt.com/")) {
+    return { ok: false, response: null, repaired: false };
+  }
+
+  try {
+    const response = await chrome.tabs.sendMessage(tab.id, message);
+    return { ok: true, response, repaired: false };
+  } catch {}
+
+  if (!await injectMonitorIntoTab(tab.id)) {
+    return { ok: false, response: null, repaired: false };
+  }
+
+  try {
+    const response = await chrome.tabs.sendMessage(tab.id, message);
+    return { ok: true, response, repaired: true };
+  } catch {
+    return { ok: false, response: null, repaired: true };
+  }
+}
+
 async function broadcast() {
   await ensureRegistryReady();
   const data = snapshot();
@@ -930,14 +968,16 @@ async function broadcast() {
     return;
   }
 
+  const message = {
+    type: "monitor-snapshot",
+    chats: data,
+    separators: separatorSnapshot()
+  };
+
   await Promise.allSettled(
     tabs
       .filter((tab) => Number.isInteger(tab.id))
-      .map((tab) => chrome.tabs.sendMessage(tab.id, {
-        type: "monitor-snapshot",
-        chats: data,
-        separators: separatorSnapshot()
-      }))
+      .map((tab) => sendTabMessageWithRepair(tab, message))
   );
   await updateBadge();
 }
@@ -1030,15 +1070,15 @@ async function rebuildRegistry() {
       return;
     }
 
-    try {
-      const local = await chrome.tabs.sendMessage(tab.id, { type: "monitor-get-local-state" });
-      if (local && local.initializing !== true) {
-        upsertState(local, tab);
-      } else if (!chats.has(tab.id)) {
-        seedTabStateFromMetadata(tab);
-      }
-    } catch {
-      if (!chats.has(tab.id)) seedTabStateFromMetadata(tab);
+    const result = await sendTabMessageWithRepair(tab, {
+      type: "monitor-get-local-state"
+    });
+    const local = result.response;
+
+    if (result.ok && local && local.initializing !== true) {
+      upsertState(local, tab);
+    } else if (!chats.has(tab.id)) {
+      seedTabStateFromMetadata(tab);
     }
   }));
 }
@@ -1544,10 +1584,7 @@ async function injectIntoOpenTabs() {
   await Promise.allSettled(
     tabs
       .filter((tab) => Number.isInteger(tab.id))
-      .map((tab) => chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ["content.js"]
-      }))
+      .map((tab) => injectMonitorIntoTab(tab.id))
   );
 
   await refreshRegistry();
@@ -1828,12 +1865,21 @@ chrome.commands.onCommand.addListener((command) => {
 });
 
 chrome.tabs.onActivated.addListener((activeInfo) => {
-  chrome.windows.get(activeInfo.windowId)
-    .then((windowInfo) => {
-      if (!windowInfo.focused) return false;
-      return acknowledgeFinishedTab(activeInfo.tabId);
-    })
-    .catch(() => {});
+  (async () => {
+    const windowInfo = await chrome.windows.get(activeInfo.windowId);
+    if (!windowInfo.focused) return false;
+
+    let tab = null;
+    try {
+      tab = await chrome.tabs.get(activeInfo.tabId);
+    } catch {}
+
+    if (tab && String(tab.url || "").startsWith("https://chatgpt.com/")) {
+      await sendTabMessageWithRepair(tab, { type: "monitor-get-local-state" });
+    }
+
+    return acknowledgeFinishedTab(activeInfo.tabId);
+  })().catch(() => {});
 });
 
 chrome.windows.onFocusChanged.addListener((windowId) => {
